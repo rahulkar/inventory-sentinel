@@ -1,0 +1,88 @@
+# =====================================================================
+#  Inventory Sentinel - git ignore
+#  Everything the app needs to run is source code; everything it
+#  produces at runtime is rebuilt on demand and stays out of git.
+# =====================================================================
+
+# ---- runtime artefacts ------------------------------------------------
+# datasets (memory-mapped .npy columns), trained models, detection runs,
+# triage decisions, exports, assistant DB / usage and settings.json, which
+# holds the AI gateway key. The folders are recreated at start-up
+# (config.ensure_dirs), so nothing under data/ is needed in the repo.
+data/
+# alternative data dirs used by tests (SENTINEL_DATA_DIR=data_smoke ...)
+data_smoke*/
+data_test*/
+
+# model files downloaded from Models -> "Use this model elsewhere"
+*.joblib
+*.onnx
+inventory_sentinel_*.zip
+
+# ---- Python -----------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.python-version
+*.egg-info/
+*.egg
+/build/
+/dist/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Node / Vite (frontend) -------------------------------------------
+# package.json and package-lock.json are tracked; node_modules and the
+# built UI are recreated by startup.bat / start.sh (npm install + build)
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+*.tsbuildinfo
+vite.config.*.timestamp-*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+
+# ---- local environment and secrets ------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+
+# ---- editors and OS ---------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---- Claude Code ------------------------------------------------------
+# launch.json is shared on purpose (dev server definitions);
+# personal overrides and worktrees stay local
+.claude/settings.local.json
+.claude/worktrees/
