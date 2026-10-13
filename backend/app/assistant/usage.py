@@ -132,6 +132,38 @@ def resolve_price(base_url: str, model: str, settings_in_per_m: float = 0.0, set
 
 
 # ---------------------------------------------------------------- recording
+def _is_chat(r: dict[str, Any]) -> bool:
+    return r.get("kind", "chat") == "chat"
+
+
+def _append(rec: dict[str, Any]) -> None:
+    """Store one record; past the cap the oldest are folded into the archived counters."""
+    with _lock:
+        state = _load()
+        state["records"].append(rec)
+        if len(state["records"]) > config.ASSISTANT_USAGE_CAP:
+            drop = state["records"][: len(state["records"]) - config.ASSISTANT_USAGE_CAP]
+            state["records"] = state["records"][len(drop) :]
+            a = state["archived"]
+            a["turns"] += len({(r["session_id"], r["turn_id"]) for r in drop if _is_chat(r)})
+            for r in drop:
+                if not _is_chat(r):
+                    a["embedding_calls"] = a.get("embedding_calls", 0) + 1
+                    a["embedding_tokens"] = a.get("embedding_tokens", 0) + r["prompt_tokens"]
+                    a["embedding_cost_usd"] = a.get("embedding_cost_usd", 0.0) + (r["cost_usd"] or 0.0)
+                    continue
+                a["llm_calls"] += 1
+                a["tool_calls"] += len(r["tool_calls"])
+                a["prompt_tokens"] += r["prompt_tokens"]
+                a["completion_tokens"] += r["completion_tokens"]
+                a["thoughts_tokens"] += r["thoughts_tokens"]
+                if r["cost_usd"] is None:
+                    a["unpriced_calls"] += 1
+                else:
+                    a["cost_usd"] += r["cost_usd"]
+        _save(state)
+
+
 def record_llm_call(
     *,
     session_id: str,
@@ -163,27 +195,23 @@ def record_llm_call(
         "tool_calls": list(tool_calls or []),
         "cost_usd": cost,
     }
-    with _lock:
-        state = _load()
-        state["records"].append(rec)
-        if len(state["records"]) > config.ASSISTANT_USAGE_CAP:
-            drop = state["records"][: len(state["records"]) - config.ASSISTANT_USAGE_CAP]
-            state["records"] = state["records"][len(drop) :]
-            a = state["archived"]
-            turns = {(r["session_id"], r["turn_id"]) for r in drop}
-            a["turns"] += len(turns)
-            for r in drop:
-                a["llm_calls"] += 1
-                a["tool_calls"] += len(r["tool_calls"])
-                a["prompt_tokens"] += r["prompt_tokens"]
-                a["completion_tokens"] += r["completion_tokens"]
-                a["thoughts_tokens"] += r["thoughts_tokens"]
-                if r["cost_usd"] is None:
-                    a["unpriced_calls"] += 1
-                else:
-                    a["cost_usd"] += r["cost_usd"]
-        _save(state)
+    _append(rec)
     return rec
+
+
+def record_embedding_call(*, model: str, tokens: int, n_inputs: int, estimated: bool = False) -> None:
+    """One /v1/embeddings request (document indexing or a semantic search), priced like a prompt."""
+    from app.assistant import settings as llm_settings
+
+    st = llm_settings.load()
+    price = resolve_price(st.base_url, model)
+    cost = round(tokens * float(price["input"]), 8) if price["known"] else None
+    rec = {
+        "ts": time.time(), "kind": "embedding", "session_id": "", "turn_id": "", "agent": "embeddings", "model": model,
+        "prompt_tokens": int(tokens or 0), "completion_tokens": 0, "thoughts_tokens": 0, "cached_tokens": 0,
+        "tool_calls": [], "cost_usd": cost, "n_inputs": int(n_inputs), "estimated": bool(estimated),
+    }
+    _append(rec)
 
 
 # ---------------------------------------------------------------- reporting
@@ -215,7 +243,7 @@ def report(session_id: str | None = None, team: list[dict[str, Any]] | None = No
     """Aggregate usage: totals, per agent (merged with the team roster), per tool, per day, recent sessions."""
     with _lock:
         state = _load()
-        records = list(state["records"])
+        records = [r for r in state["records"] if _is_chat(r)]
         archived = dict(state["archived"])
         since = state.get("since")
     if session_id:
@@ -286,7 +314,7 @@ def report(session_id: str | None = None, team: list[dict[str, Any]] | None = No
 
 def session_totals(session_id: str) -> dict[str, Any]:
     with _lock:
-        records = [r for r in _load()["records"] if r["session_id"] == session_id]
+        records = [r for r in _load()["records"] if r["session_id"] == session_id and _is_chat(r)]
     return {k: v for k, v in _agg(records).items() if k in ("llm_calls", "tool_calls", "prompt_tokens", "completion_tokens", "total_tokens", "cost_usd", "unpriced_calls")}
 
 
@@ -303,3 +331,126 @@ def full_report(session_id: str | None = None) -> dict[str, Any]:
         team = [{"name": n, "label": l, "description": "", "tools": []} for n, l in AGENT_LABELS.items()]
     price = resolve_price(st.base_url, st.model, st.price_input_per_m, st.price_output_per_m) if st.model else None
     return report(session_id=session_id, team=team, price=price, model=st.model)
+
+
+# ---------------------------------------------------------------- finops (Settings page)
+def _spend(records: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6),
+        "tokens": sum(r["prompt_tokens"] + r["completion_tokens"] for r in records),
+        "calls": len(records),
+        "unpriced_calls": sum(1 for r in records if r["cost_usd"] is None),
+    }
+
+
+def finops(monthly_budget_usd: float = 0.0) -> dict[str, Any]:
+    """Spend by period, chat vs embeddings, per agent, per day, and the month against an optional budget."""
+    import calendar
+
+    from app.assistant import settings as llm_settings
+
+    st = llm_settings.load()
+    with _lock:
+        state = _load()
+        records = list(state["records"])
+        archived = dict(state["archived"])
+        since = state.get("since")
+    now = datetime.now()
+    day0 = datetime(now.year, now.month, now.day).timestamp()
+    week0 = day0 - 6 * 86400
+    month0 = datetime(now.year, now.month, 1).timestamp()
+    chat = [r for r in records if _is_chat(r)]
+    emb = [r for r in records if not _is_chat(r)]
+
+    all_time = _spend(records)
+    all_time["cost_usd"] = round(all_time["cost_usd"] + archived.get("cost_usd", 0.0) + archived.get("embedding_cost_usd", 0.0), 6)
+    all_time["tokens"] += archived.get("prompt_tokens", 0) + archived.get("completion_tokens", 0) + archived.get("embedding_tokens", 0)
+    all_time["calls"] += archived.get("llm_calls", 0) + archived.get("embedding_calls", 0)
+    all_time["unpriced_calls"] += archived.get("unpriced_calls", 0)
+    periods = {
+        "today": _spend([r for r in records if r["ts"] >= day0]),
+        "last_7_days": _spend([r for r in records if r["ts"] >= week0]),
+        "month_to_date": _spend([r for r in records if r["ts"] >= month0]),
+        "all_time": all_time,
+    }
+
+    mtd = periods["month_to_date"]["cost_usd"]
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    elapsed = (now.timestamp() - month0) / 86400
+    projected = mtd / elapsed * days_in_month if elapsed >= 1 else None  # under a day of data is too little to extrapolate
+    budget = {
+        "monthly_usd": monthly_budget_usd,
+        "month": now.strftime("%B %Y"),
+        "spent_usd": mtd,
+        "projected_usd": round(projected, 6) if projected is not None else None,
+        "used_pct": (mtd / monthly_budget_usd) if monthly_budget_usd > 0 else None,
+        "status": ("over" if mtd > monthly_budget_usd else "at_risk" if projected and projected > monthly_budget_usd else "ok") if monthly_budget_usd > 0 else "none",
+    }
+
+    turns = {(r["session_id"], r["turn_id"]) for r in chat}
+    n_turns = len(turns) + archived.get("turns", 0)
+    chat_agg = _agg(chat)
+    chat_cost = chat_agg["cost_usd"] + archived.get("cost_usd", 0.0)
+    chat_tokens = chat_agg["total_tokens"] + archived.get("prompt_tokens", 0) + archived.get("completion_tokens", 0)
+    chat_calls = chat_agg["llm_calls"] + archived.get("llm_calls", 0)
+    chat_out = {
+        "conversations": len({r["session_id"] for r in chat}),
+        "questions": n_turns,
+        "llm_calls": chat_calls,
+        "tool_calls": chat_agg["tool_calls"] + archived.get("tool_calls", 0),
+        "tokens": chat_tokens,
+        "cost_usd": round(chat_cost, 6),
+        "unpriced_calls": chat_agg["unpriced_calls"] + archived.get("unpriced_calls", 0),
+        "avg_cost_per_question": round(chat_cost / n_turns, 6) if n_turns else 0.0,
+        "avg_tokens_per_question": round(chat_tokens / n_turns) if n_turns else 0,
+        "avg_calls_per_question": round(chat_calls / n_turns, 2) if n_turns else 0.0,
+    }
+
+    by_agent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in chat:
+        by_agent[r["agent"]].append(r)
+    agents = sorted(
+        (
+            {"name": n, "label": AGENT_LABELS.get(n, n.replace("_", " ").title()), "invocations": len({(r["session_id"], r["turn_id"]) for r in rs}), **_spend(rs)}
+            for n, rs in by_agent.items()
+        ),
+        key=lambda a: (-a["cost_usd"], -a["tokens"]),
+    )
+
+    emb_spend = _spend(emb)
+    embeddings = {
+        "model": st.embedding_model,
+        "calls": emb_spend["calls"] + archived.get("embedding_calls", 0),
+        "inputs": sum(r.get("n_inputs", 0) for r in emb),
+        "tokens": emb_spend["tokens"] + archived.get("embedding_tokens", 0),
+        "cost_usd": round(emb_spend["cost_usd"] + archived.get("embedding_cost_usd", 0.0), 6),
+        "unpriced_calls": emb_spend["unpriced_calls"],
+        "estimated_tokens": any(r.get("estimated") for r in emb),
+    }
+
+    daily: dict[str, dict[str, float]] = {}
+    for i in range(29, -1, -1):
+        daily[datetime.fromtimestamp(day0 - i * 86400).strftime("%Y-%m-%d")] = {"chat_usd": 0.0, "embeddings_usd": 0.0, "tokens": 0}
+    for r in records:
+        d = daily.get(datetime.fromtimestamp(r["ts"]).strftime("%Y-%m-%d"))
+        if d is None:
+            continue
+        d["chat_usd" if _is_chat(r) else "embeddings_usd"] += r["cost_usd"] or 0.0
+        d["tokens"] += r["prompt_tokens"] + r["completion_tokens"]
+
+    chat_price = resolve_price(st.base_url, st.model, st.price_input_per_m, st.price_output_per_m) if st.model else None
+    emb_price = resolve_price(st.base_url, st.embedding_model) if st.embedding_model else None
+    return {
+        "since": since,
+        "currency": "USD",
+        "periods": periods,
+        "budget": budget,
+        "chat": chat_out,
+        "agents": agents,
+        "embeddings": embeddings,
+        "daily": [{"day": k, "chat_usd": round(v["chat_usd"], 6), "embeddings_usd": round(v["embeddings_usd"], 6), "tokens": int(v["tokens"])} for k, v in daily.items()],
+        "pricing": {
+            "chat": {"model": st.model, "input_per_m": round(chat_price["input"] * 1e6, 4), "output_per_m": round(chat_price["output"] * 1e6, 4), "source": chat_price["source"], "known": chat_price["known"]} if chat_price else None,
+            "embeddings": {"model": st.embedding_model, "input_per_m": round(emb_price["input"] * 1e6, 4), "source": emb_price["source"], "known": emb_price["known"]} if emb_price else None,
+        },
+    }

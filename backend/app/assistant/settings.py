@@ -24,6 +24,7 @@ class LlmSettings(BaseModel):
     embedding_model: str = ""  # optional: a gateway embedding model for semantic document search; blank = keyword search only
     price_input_per_m: float = Field(0.0, ge=0)  # USD per 1M prompt tokens; 0 = use the gateway's or litellm's price list
     price_output_per_m: float = Field(0.0, ge=0)  # USD per 1M completion tokens; 0 = automatic
+    monthly_budget_usd: float = Field(0.0, ge=0)  # FinOps: spend limit per calendar month shown on Settings; 0 = no budget
     verify_ssl: bool = False  # off by default: lab gateways usually carry self-signed certificates; switch on (with a CA bundle) for production
     ca_bundle: str = ""  # optional path to a PEM bundle that signs the gateway's certificate (corporate CA)
     updated_at: str | None = None
@@ -33,7 +34,7 @@ class LlmSettings(BaseModel):
         return bool(self.base_url and self.model)
 
     def fingerprint(self) -> str:
-        return json.dumps(self.model_dump(exclude={"updated_at"}), sort_keys=True)
+        return json.dumps(self.model_dump(exclude={"updated_at", "monthly_budget_usd"}), sort_keys=True)
 
 
 class LlmSettingsOut(BaseModel):
@@ -46,6 +47,7 @@ class LlmSettingsOut(BaseModel):
     embedding_model: str
     price_input_per_m: float
     price_output_per_m: float
+    monthly_budget_usd: float
     verify_ssl: bool
     ca_bundle: str
     tls_from_env: str | None  # which environment variable (if any) decided the TLS choice
@@ -181,6 +183,7 @@ def to_out(s: LlmSettings) -> LlmSettingsOut:
         embedding_model=s.embedding_model,
         price_input_per_m=s.price_input_per_m,
         price_output_per_m=s.price_output_per_m,
+        monthly_budget_usd=s.monthly_budget_usd,
         verify_ssl=s.verify_ssl,
         ca_bundle=s.ca_bundle,
         tls_from_env=env_tls()[2],

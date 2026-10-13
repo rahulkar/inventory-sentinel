@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useAssistant } from "../assistant/AssistantContext";
 import { errorMessage, useApp } from "../context";
+import { FinOpsCard } from "../components/FinOpsCard";
 import { Help, Spinner } from "../components/Layout";
 import { TechnicalDetails } from "../components/TechnicalDetails";
 import type { LlmSettingsOut, LlmTestResult } from "../types";
@@ -263,6 +264,7 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+      <FinOpsCard />
     </div>
   );
 }

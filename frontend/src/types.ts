@@ -621,6 +621,7 @@ export interface LlmSettingsOut {
   embedding_model: string;
   price_input_per_m: number;
   price_output_per_m: number;
+  monthly_budget_usd: number;
   verify_ssl: boolean;
   ca_bundle: string;
   tls_from_env: string | null;
@@ -785,6 +786,39 @@ export interface UsageReport {
   tools: { name: string; calls: number }[];
   by_day: { day: string; llm_calls: number; tool_calls: number; total_tokens: number; cost_usd: number; invocations: number }[];
   sessions: { session_id: string; last_ts: number; llm_calls: number; tool_calls: number; total_tokens: number; cost_usd: number; invocations: number }[];
+}
+
+export interface FinOpsSpend {
+  cost_usd: number;
+  tokens: number;
+  calls: number;
+  unpriced_calls: number;
+}
+
+export interface FinOpsReport {
+  since: string | null;
+  currency: string;
+  periods: { today: FinOpsSpend; last_7_days: FinOpsSpend; month_to_date: FinOpsSpend; all_time: FinOpsSpend };
+  budget: { monthly_usd: number; month: string; spent_usd: number; projected_usd: number | null; used_pct: number | null; status: "none" | "ok" | "at_risk" | "over" };
+  chat: {
+    conversations: number;
+    questions: number;
+    llm_calls: number;
+    tool_calls: number;
+    tokens: number;
+    cost_usd: number;
+    unpriced_calls: number;
+    avg_cost_per_question: number;
+    avg_tokens_per_question: number;
+    avg_calls_per_question: number;
+  };
+  agents: (FinOpsSpend & { name: string; label: string; invocations: number })[];
+  embeddings: { model: string; calls: number; inputs: number; tokens: number; cost_usd: number; unpriced_calls: number; estimated_tokens: boolean };
+  daily: { day: string; chat_usd: number; embeddings_usd: number; tokens: number }[];
+  pricing: {
+    chat: { model: string; input_per_m: number; output_per_m: number; source: string; known: boolean } | null;
+    embeddings: { model: string; input_per_m: number; source: string; known: boolean } | null;
+  };
 }
 
 // ---------------------------------------------------------------- vendor connectors (MCP)

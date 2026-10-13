@@ -20,6 +20,7 @@ import type {
   ConnectorIn,
   ConnectorTest,
   ExportStatus,
+  FinOpsReport,
   Health,
   InvestigationPlan,
   Job,
@@ -288,6 +289,8 @@ export const api = {
       test: (body: { base_url?: string; api_key?: string; model?: string | null; verify_ssl?: boolean; ca_bundle?: string }) => request<LlmTestResult>("/api/settings/llm/test", json("POST", body)),
       models: () => request<{ models: string[] }>("/api/settings/llm/models"),
     },
+    finops: () => request<FinOpsReport>("/api/settings/finops"),
+    setBudget: (monthly_budget_usd: number) => request<FinOpsReport>("/api/settings/finops/budget", json("PUT", { monthly_budget_usd })),
   },
 
   assistant: {

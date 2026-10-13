@@ -259,6 +259,20 @@ def _vector(e: Any) -> np.ndarray:
     return np.asarray(e, dtype=np.float32)
 
 
+def _record_usage(model: str, texts: list[str], reported: Any) -> None:
+    """Count the request for FinOps; ~4 characters per token when the gateway reports no usage."""
+    from app.assistant import usage
+
+    tokens = int((reported or {}).get("prompt_tokens") or (reported or {}).get("total_tokens") or 0) if isinstance(reported, dict) else 0
+    estimated = tokens <= 0
+    if estimated:
+        tokens = max(1, sum(len(t) for t in texts) // 4)
+    try:
+        usage.record_embedding_call(model=model, tokens=tokens, n_inputs=len(texts), estimated=estimated)
+    except Exception:  # noqa: BLE001 - accounting must never break search or indexing
+        pass
+
+
 def _post(texts: list[str], timeout: float) -> np.ndarray:
     from app.assistant import settings as llm
 
@@ -273,7 +287,9 @@ def _post(texts: list[str], timeout: float) -> np.ndarray:
             time.sleep(min(wait, 20.0))
             continue
         r.raise_for_status()
-        data = sorted(r.json()["data"], key=lambda d: d.get("index", 0))
+        body = r.json()
+        _record_usage(s.embedding_model.strip(), texts, body.get("usage"))
+        data = sorted(body["data"], key=lambda d: d.get("index", 0))
         v = np.stack([_vector(d["embedding"]) for d in data]) if data else np.zeros((0, 1), dtype=np.float32)
         if v.shape[0] != len(texts):
             raise ValueError(f"the gateway returned {v.shape[0]} vectors for {len(texts)} passages")

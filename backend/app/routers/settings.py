@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException
 
 from app.assistant import settings as llm
+from app.assistant import usage
 from app.assistant.settings import LlmSettingsOut, LlmTestRequest, LlmTestResult
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -61,3 +62,24 @@ async def llm_models() -> dict[str, list[str]]:
         return {"models": await llm.list_models(s.base_url, s.api_key, verify=llm.verify_arg(s.verify_ssl, s.ca_bundle))}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, llm.readable_error(exc, s.base_url)) from exc
+
+
+@router.get("/finops")
+def finops() -> dict[str, Any]:
+    """AI spend for the FinOps card: periods, budget, chat vs embeddings, per agent, last 30 days."""
+    return usage.finops(llm.load().monthly_budget_usd)
+
+
+@router.put("/finops/budget")
+def put_budget(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Set the monthly budget alone (no engine rebuild, gateway fields untouched)."""
+    try:
+        amount = float(body.get("monthly_budget_usd") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, "monthly_budget_usd must be a number.") from exc
+    if amount < 0:
+        raise HTTPException(400, "The budget cannot be negative.")
+    s = llm.load().model_copy()
+    s.monthly_budget_usd = amount
+    llm.save(s)
+    return usage.finops(amount)
