@@ -1,7 +1,15 @@
+import type { ReactNode } from "react";
+import { Check, Circle, LoaderCircle, Minus, X } from "lucide-react";
 import type { Job } from "../types";
 import { fmtClock, fmtDuration, isTerminal } from "../utils";
 
-const ICON: Record<string, string> = { queued: "○", running: "◐", done: "✓", failed: "✕", cancelled: "–" };
+const ICON: Record<string, ReactNode> = {
+  queued: <Circle size={13} />,
+  running: <LoaderCircle size={13} className="spin" />,
+  done: <Check size={14} strokeWidth={3} />,
+  failed: <X size={14} strokeWidth={3} />,
+  cancelled: <Minus size={14} />,
+};
 
 export function JobProgress({ job, onCancel, compact = false }: { job: Job | null; onCancel?: (id: string) => void; compact?: boolean }) {
   if (!job) return null;
@@ -41,7 +49,7 @@ export function JobProgress({ job, onCancel, compact = false }: { job: Job | nul
           {job.steps.map((s) => (
             <li key={s.key} className={`step-${s.status}`}>
               <span className="ico" aria-hidden="true">
-                {ICON[s.status] ?? "○"}
+                {ICON[s.status] ?? ICON.queued}
               </span>
               {s.label}
               {s.seconds !== null && s.status === "done" ? <span className="muted"> · {fmtClock(s.seconds)}</span> : null}

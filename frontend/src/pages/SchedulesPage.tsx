@@ -1,3 +1,4 @@
+import { ArrowRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -384,7 +385,7 @@ function History({ schedule }: { schedule: Schedule }) {
                   <td>
                     {r.detection_run_id ? (
                       <button className="btn sm link" onClick={() => void open(r)}>
-                        Alerts →
+                        Alerts <ArrowRight size={16} aria-hidden="true" />
                       </button>
                     ) : null}
                   </td>
@@ -501,7 +502,7 @@ export function SchedulesPage() {
             <b>Connect a data source first.</b>
             <div className="muted">Schedules pull fresh data from a vendor connector before each run.</div>
             <button className="btn primary mt" onClick={() => setPage("data")}>
-              Go to Data →
+              Go to Data <ArrowRight size={16} aria-hidden="true" />
             </button>
           </EmptyState>
         </div>
@@ -519,7 +520,7 @@ export function SchedulesPage() {
         <div className="row">
           {status ? <span className={`chip ${status.running ? "status-done" : "status-failed"}`} title={status.last_tick ? `Last check ${fmtDate(status.last_tick)}` : undefined}>{status.running ? `Scheduler on · checks every ${status.tick_seconds}s` : "Scheduler off"}</span> : null}
           <button className="btn primary" onClick={() => setEditing({ id: null, body: blank(connectors[0].id) })}>
-            + New schedule
+            <Plus size={16} aria-hidden="true" /> New schedule
           </button>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { ArrowRight, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useHeadlineFigures } from "../hooks/useHeadlineFigures";
 import { useApp } from "../context";
@@ -330,7 +331,7 @@ export function StoryPage() {
         </div>
         <div className="present-bar">
           <button className="btn sm" onClick={() => go(-1)} disabled={index === 0}>
-            ← Previous
+            <ChevronLeft size={16} aria-hidden="true" /> Previous
           </button>
           <div className="dots">
             {slides.map((x, i) => (
@@ -338,7 +339,7 @@ export function StoryPage() {
             ))}
           </div>
           <button className="btn sm" onClick={() => go(1)} disabled={index === slides.length - 1}>
-            Next →
+            Next <ChevronRight size={16} aria-hidden="true" />
           </button>
           <button className="btn sm" onClick={() => setPresent(false)}>
             Exit
@@ -357,7 +358,7 @@ export function StoryPage() {
         </div>
         <div className="row">
           <button className="btn primary" onClick={() => { setIndex(0); setPresent(true); }}>
-            ▶ Present
+            <Play size={14} fill="currentColor" aria-hidden="true" /> Present
           </button>
           <button className="btn" onClick={() => setPage(exec ? "overview" : "data")}>
             Try it
@@ -382,7 +383,7 @@ export function StoryPage() {
           <div className="muted">{exec ? "One click runs the whole pipeline: the vendor's latest data, four methods competing, then every store, item and day scored." : "Sync a vendor, train four methods on its history, run detection, follow the SOPs and plan a week of investigations."}</div>
         </div>
         <button className="btn primary" onClick={() => setPage(exec ? "overview" : "data")}>
-          {exec ? "See the answer →" : "Start with Data →"}
+          {exec ? "See the answer" : "Start with Data"} <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>

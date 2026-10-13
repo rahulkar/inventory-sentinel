@@ -1,3 +1,4 @@
+import { ArrowRight, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SopChecklist } from "./SopChecklist";
 import { api } from "../api";
@@ -59,7 +60,7 @@ export function AlertDetail({ runId, alertId, answerKey, onClose, onChanged, sim
           {a.store_name}
         </h3>
         <button className="btn sm link" onClick={onClose} aria-label="Close alert detail">
-          ✕
+          <X size={18} aria-hidden="true" />
         </button>
       </div>
       <div className="row" style={{ gap: 6 }}>
@@ -115,7 +116,7 @@ export function AlertDetail({ runId, alertId, answerKey, onClose, onChanged, sim
       <TriageButtons runId={runId} alert={a} onDone={() => { load(); onChanged(); }} />
       <div className="row mt">
         <button className="btn sm primary" onClick={() => openDrill(a.store_id, a.sku_id, a.alert_id)}>
-          See the stock story →
+          See the stock story <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -259,10 +260,10 @@ export function AlertQueue({ runId, datasetHasTruth, simple = false }: { runId: 
               </span>
               <div className="row" style={{ gap: 6 }}>
                 <button className="btn sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
-                  ← Previous
+                  <ChevronLeft size={16} aria-hidden="true" /> Previous
                 </button>
                 <button className="btn sm" disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>
-                  Next →
+                  Next <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </div>
             </div>

@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -187,11 +188,11 @@ export function SopChecklist({ runId, alertId, compact = false }: { runId: strin
         ) : null}
       </div>
       {esc?.notify.length && !compact ? <div className="small muted">Tell: {esc.notify.join(", ")}.</div> : null}
-      <ol className="story-list numbered" style={{ margin: 0 }}>
+      <ol className="sop-steps">
         {sop.steps.map((s) => {
           const done = readDone(sop.alert.alert_key, s.id);
           return (
-            <li key={s.id} style={{ marginBottom: 8 }}>
+            <li key={s.id}>
               <label className="check" style={{ alignItems: "flex-start" }}>
                 {compact ? null : <input type="checkbox" checked={done} onChange={() => toggle(s.id)} aria-label={`Mark step ${s.id} done`} />}
                 <span style={{ textDecoration: done ? "line-through" : undefined }}>
@@ -210,7 +211,7 @@ export function SopChecklist({ runId, alertId, compact = false }: { runId: strin
                 ))}
                 {canRaise(s) && !s.raised.length && raising !== s.id ? (
                   <button className="btn sm" onClick={() => setRaising(s.id)}>
-                    Raise {s.vendor_task!.type.replace(/_/g, " ")} task →
+                    Raise {s.vendor_task!.type.replace(/_/g, " ")} task <ArrowRight size={16} aria-hidden="true" />
                   </button>
                 ) : null}
               </div>

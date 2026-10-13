@@ -123,7 +123,7 @@ def _run(ctx: jobs.JobContext, model_id: str, req: RetrainRequest) -> dict[str, 
         params={"alpha": req.alpha, "classifier": clf_name}, feature_columns=list(F.FEATURES), input_features=list(F.FEATURES) + ["base_percentile"], categories=ds.meta.categories,
         thresholds=thr, score_quantiles=[float(x) for x in q], quantile_levels=[float(x) for x in QUANTILE_LEVELS], importances=base.importances, feature_baseline=base.feature_baseline,
         alert_rate=base.alert_rate, test_from_date=ds.meta.test_from_date, onnx_ok=False, onnx_reason="The feedback re-ranker chains two models (a detector and a classifier); use the joblib bundle.",
-        notes=[f"Trained on {len(pos)} confirmed and {len(neg)} false-alarm days from team feedback, {len(lp)} loss-prevention-flagged days and {len(unl)} unlabelled days.", f"Judged on {fe['window']}."],
+        notes=[f"Trained on {len(pos):,} confirmed and {len(neg):,} false-alarm days from team feedback, {len(lp):,} loss-prevention-flagged days and {len(unl):,} unlabelled days.", f"Judged on {fe['window']}."],
         feedback_eval=fe,
     )
     pct = percentile_of(meta, s_new)

@@ -75,7 +75,7 @@ export function HistogramChart({ bins, height = 220, label = "Days", unit = "" }
       <BarChart data={data} margin={{ top: 8, right: 8, left: -4, bottom: 0 }} barCategoryGap={2}>
         <CartesianGrid vertical={false} stroke={C.grid} />
         <XAxis dataKey="x" tick={tick} axisLine={axisLine} tickLine={false} interval="preserveStartEnd" minTickGap={28} />
-        <YAxis tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => num.format(v)} />
+        <YAxis allowDecimals={false} tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => num.format(v)} />
         <Tooltip
           cursor={{ fill: "rgba(42,120,214,0.08)" }}
           content={({ active, payload }: TipProps) =>
@@ -173,7 +173,7 @@ export function PRCurveChart({ curves, height = 260 }: { curves: { name: string;
       <LineChart margin={{ top: 8, right: 16, left: 0, bottom: 14 }}>
         <CartesianGrid stroke={C.grid} />
         <XAxis type="number" dataKey="recall" domain={[0, 1]} tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={(v) => `${Math.round(v * 100)}%`} label={{ value: "Share of real problems found", position: "insideBottom", offset: -8, fill: C.textMuted, fontSize: 12 }} />
-        <YAxis type="number" domain={[0, 1]} tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v * 100)}%`} width={44} label={{ value: "Alerts that are real", angle: -90, position: "insideLeft", fill: C.textMuted, fontSize: 12, dx: 10, dy: 50 }} />
+        <YAxis type="number" domain={[0, 1]} tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v * 100)}%`} width={60} label={{ value: "Alerts that are real", angle: -90, position: "insideLeft", fill: C.textMuted, fontSize: 12, style: { textAnchor: "middle" } }} />
         <Tooltip
           content={({ active, payload }: TipProps) =>
             active && payload?.length ? (
@@ -206,7 +206,7 @@ export function TrendChart({ rows, mode, types, height = 260 }: { rows: TrendRow
       <AreaChart data={rows} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey="date" tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={shortDate} minTickGap={36} />
-        <YAxis tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => num.format(v)} />
+        <YAxis allowDecimals={false} tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => num.format(v)} />
         <Tooltip
           content={({ active, payload, label }: TipProps) =>
             active && payload?.length ? (
@@ -330,7 +330,7 @@ export function HoursCurveChart({ curve, hours, height = 260 }: { curve: PlanCur
             ) : null
           }
         />
-        <Legend formatter={(v) => <span style={{ color: C.text, fontSize: 12 }}>{({ expected_recovered: "Expected recovery, ranked by the model", naive_expected: "Working down by £ at risk", cost: "Cost of investigator time" } as Record<string, string>)[String(v)] ?? String(v)}</span>} />
+        <Legend wrapperStyle={{ paddingTop: 16 }} formatter={(v) => <span style={{ color: C.text, fontSize: 12 }}>{({ expected_recovered: "Expected recovery, ranked by the model", naive_expected: "Working down by £ at risk", cost: "Cost of investigator time" } as Record<string, string>)[String(v)] ?? String(v)}</span>} />
         <Area type="monotone" dataKey="expected_recovered" stroke={C.series} fill={C.series} fillOpacity={0.18} strokeWidth={2} isAnimationActive={false} />
         <Line type="monotone" dataKey="naive_expected" stroke={C.navy} strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} />
         <Line type="monotone" dataKey="cost" stroke={C.muted} strokeWidth={2} dot={false} isAnimationActive={false} />
@@ -347,7 +347,7 @@ export function PrecisionLineChart({ rows, height = 220 }: { rows: TriageGroup[]
       <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey="key" tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={shortDate} />
-        <YAxis yAxisId="n" tick={tick} axisLine={false} tickLine={false} />
+        <YAxis yAxisId="n" allowDecimals={false} tick={tick} axisLine={false} tickLine={false} />
         <YAxis yAxisId="p" orientation="right" domain={[0, 1]} tick={tick} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v * 100)}%`} width={44} />
         <Tooltip
           content={({ active, payload }: TipProps) =>

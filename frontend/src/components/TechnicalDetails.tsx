@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function TechnicalDetails({ title = "Technical details", children, open = false }: { title?: string; children: ReactNode; open?: boolean }) {
@@ -35,7 +36,7 @@ export function NextStep({
         {disabled && disabledReason ? <div className="small muted">{disabledReason}</div> : null}
       </div>
       <button className="btn primary" disabled={disabled} onClick={onClick}>
-        {cta} →
+        {cta} <ArrowRight size={16} aria-hidden="true" />
       </button>
     </div>
   );

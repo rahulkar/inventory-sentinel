@@ -1,3 +1,4 @@
+import { ArrowRight, Check, Play } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useApp } from "../context";
@@ -55,10 +56,10 @@ export function OverviewPage() {
           </p>
           <div className="row mt">
             <button className="btn primary" onClick={() => setPage(next.page)}>
-              {next.label} →
+              {next.label} <ArrowRight size={16} aria-hidden="true" />
             </button>
             <button className="btn" onClick={() => setPage("story")}>
-              ▶ Two-minute story for leadership
+              <Play size={14} fill="currentColor" aria-hidden="true" /> Two-minute story for leadership
             </button>
           </div>
         </div>
@@ -85,7 +86,7 @@ export function OverviewPage() {
               { n: 3, title: "Act", done: hasRun, page: "act" as const, desc: hasRun ? "Alerts, dashboard, investigation planner, drill-down and triage." : "Score every day, get alerts with reasons, plan investigator time." },
             ].map((s) => (
               <div key={s.n} className={`step-card ${s.done ? "done" : ""}`}>
-                <div className="n">{s.done ? "✓" : s.n}</div>
+                <div className="n">{s.done ? <Check size={15} strokeWidth={3} /> : s.n}</div>
                 <h3>{s.title}</h3>
                 <p className="small muted" style={{ minHeight: 54 }}>
                   {s.desc}

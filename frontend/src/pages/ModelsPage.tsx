@@ -1,3 +1,4 @@
+import { ArrowRight, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -29,7 +30,7 @@ export function ModelsPage() {
           <b>No models yet.</b>
           <div className="muted">Every model you train is kept here with its full metrics.</div>
           <button className="btn primary mt" onClick={() => setPage("train")}>
-            Go to Train →
+            Go to Train <ArrowRight size={16} aria-hidden="true" />
           </button>
         </EmptyState>
       </div>
@@ -85,7 +86,7 @@ export function ModelsPage() {
                           </button>
                         ) : null}
                         <button className="btn sm danger" aria-label={`Delete ${m.label}`} onClick={(e) => { e.stopPropagation(); if (confirm(`Delete ${m.name}?`)) void deleteModel(m.model_id); }}>
-                          ✕
+                          <Trash2 size={14} aria-hidden="true" />
                         </button>
                       </div>
                     </td>

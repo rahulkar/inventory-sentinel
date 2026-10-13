@@ -194,7 +194,7 @@ export function TriagePanel({ runId, datasetId, modelId, datasetHasTruth }: { ru
             </table>
           </div>
           <p className="small muted mt">
-            {fe.window}. Labels: {fe.n_labels ? `${fe.n_labels.confirmed} confirmed and ${fe.n_labels.false_alarm} false-alarm days from reviews, ${fe.n_labels.lp_flagged} loss-prevention-flagged days` : ""}; classifier {fe.classifier}. Run detection again with the re-ranker to get the new alert list.
+            {fe.window}. Labels: {fe.n_labels ? `${num.format(fe.n_labels.confirmed)} confirmed and ${num.format(fe.n_labels.false_alarm)} false-alarm days from reviews, ${num.format(fe.n_labels.lp_flagged)} loss-prevention-flagged days` : ""}; classifier {fe.classifier}. Run detection again with the re-ranker to get the new alert list.
           </p>
           <div className="row">
             <button className="btn sm" onClick={() => setPage("models")}>

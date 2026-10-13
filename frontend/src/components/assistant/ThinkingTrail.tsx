@@ -1,6 +1,8 @@
+import { ArrowRight, Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ChatMessage, ToolActivity } from "../../types";
 import { Spinner } from "../Layout";
+import { IconChevron, IconSparkle } from "./ChatIcons";
 
 export const AGENT_LABELS: Record<string, string> = {
   sentinel_assistant: "Front door",
@@ -25,7 +27,7 @@ export function agentLabel(name?: string | null): string {
   return AGENT_LABELS[name] ?? name.replace(/_/g, " ");
 }
 
-function Avatar({ name }: { name?: string | null }) {
+export function Avatar({ name }: { name?: string | null }) {
   const key = name ?? "sentinel_assistant";
   return (
     <span className={`agent-avatar a-${key}`} title={agentLabel(name)}>
@@ -121,9 +123,11 @@ export function ThinkingTrail({ m }: { m: ChatMessage }) {
   return (
     <div className={`trail ${m.pending ? "live" : ""}`}>
       <button className="trail-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
-        <span className="trail-glyph">{m.pending ? <Spinner /> : "✦"}</span>
+        <span className="trail-glyph">{m.pending ? <Spinner /> : <IconSparkle />}</span>
         <span className="trail-summary">{summary}</span>
-        <span className="trail-chevron">{expanded ? "▾" : "▸"}</span>
+        <span className={`trail-chevron ${expanded ? "open" : ""}`}>
+          <IconChevron />
+        </span>
       </button>
       {expanded ? (
         <ol className="trail-steps">
@@ -133,13 +137,18 @@ export function ThinkingTrail({ m }: { m: ChatMessage }) {
               <Avatar name={s.agent} />
               <span className="trail-body">
                 <span className="trail-title">
-                  {s.kind === "transfer" ? <span className="trail-arrow">→ </span> : null}
+                  {s.kind === "transfer" ? <ArrowRight className="trail-arrow" size={12} aria-hidden="true" /> : null}
                   {s.title}
                   {s.status === "running" ? <span className="trail-dots" aria-hidden="true" /> : null}
                 </span>
                 {s.detail ? <span className="trail-detail">{s.detail}</span> : null}
               </span>
-              <span className="trail-status">{s.status === "running" ? (s.ms !== undefined ? fmtMs(s.ms) : "") : s.status === "failed" ? "✕" : s.ms !== undefined && s.kind === "tool" ? `✓ ${fmtMs(s.ms)}` : "✓"}</span>
+              <span className="trail-status">{s.status === "running" ? (s.ms !== undefined ? fmtMs(s.ms) : "") : s.status === "failed" ? <X size={13} strokeWidth={2.5} /> : (
+                  <>
+                    <Check size={13} strokeWidth={2.5} />
+                    {s.ms !== undefined && s.kind === "tool" ? fmtMs(s.ms) : null}
+                  </>
+                )}</span>
             </li>
           ))}
         </ol>

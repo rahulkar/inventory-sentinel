@@ -1,5 +1,6 @@
 import { useAssistant } from "../assistant/AssistantContext";
 import { ChatPanel } from "../components/assistant/ChatPanel";
+import { IconGear, IconPlus, IconTrash } from "../components/assistant/ChatIcons";
 import { UsagePanel, fmtCost, fmtTokens } from "../components/assistant/UsagePanel";
 import { ConversationsArt, EmptyState } from "../components/Illustrations";
 import { useApp } from "../context";
@@ -20,15 +21,15 @@ export function AssistantPage() {
           </p>
         </div>
         <div className="row">
-          <button className="btn" onClick={() => setPage("settings")}>
-            ⚙ Settings
+          <button className="btn with-icon" onClick={() => setPage("settings")}>
+            <IconGear /> Settings
           </button>
-          <button className="btn primary" onClick={newSession}>
-            New conversation
+          <button className="btn primary with-icon" onClick={newSession}>
+            <IconPlus /> New conversation
           </button>
         </div>
       </div>
-      <div className="grid grid-side" style={{ gridTemplateColumns: "300px minmax(0, 1fr)" }}>
+      <div className="grid assistant-grid">
         <div className="card">
           <div className="card-title">
             <h3>Conversations</h3>
@@ -36,7 +37,7 @@ export function AssistantPage() {
           {sessions.length ? (
             <div className="list">
               {sessions.map((s) => (
-                <div key={s.session_id} className={`list-item ${s.session_id === currentSessionId ? "selected" : ""}`} onClick={() => void openSession(s.session_id)}>
+                <div key={s.session_id} className={`list-item convo ${s.session_id === currentSessionId ? "selected" : ""}`} onClick={() => void openSession(s.session_id)}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="title" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.title}
@@ -44,13 +45,15 @@ export function AssistantPage() {
                     <div className="meta">{s.updated_at ? fmtDate(s.updated_at) : s.created_at ? fmtDate(s.created_at) : ""}</div>
                   </div>
                   <button
-                    className="btn sm danger"
+                    className="icon-btn ghost danger"
+                    title="Delete this conversation"
+                    aria-label={`Delete conversation: ${s.title}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (confirm("Delete this conversation?")) void deleteSession(s.session_id);
                     }}
                   >
-                    ✕
+                    <IconTrash />
                   </button>
                 </div>
               ))}

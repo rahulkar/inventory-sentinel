@@ -105,6 +105,7 @@ model_detail = as_async_tool(T.model_detail)
 list_experiments = as_async_tool(T.list_experiments)
 list_detection_runs = as_async_tool(T.list_detection_runs)
 alert_summary = as_async_tool(T.alert_summary)
+executive_overview = as_async_tool(T.executive_overview)
 anomaly_trend = as_async_tool(T.anomaly_trend)
 hotspots = as_async_tool(T.hotspots)
 list_alerts = as_async_tool(T.list_alerts)
@@ -134,6 +135,7 @@ SOP = [get_sop, find_sop]
 MODEL = [list_models, model_detail, list_experiments, available_algorithms, triage_summary]
 ALERTS = [list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series]
 PLAN = [list_detection_runs, alert_summary, investigation_plan, compare_plans, hotspots]
+EXEC = [executive_overview]
 JOBS = [propose_job]
 
 
@@ -161,6 +163,7 @@ def tool_label(name: str, args: dict[str, Any]) -> str:
         "list_experiments": "Listing training runs",
         "list_detection_runs": "Listing detection runs",
         "alert_summary": "Summarising the detection run",
+        "executive_overview": "Reading the board figures" + (f" for the last {a.get('days')} days" if a.get("days") else " for all data" if a.get("days") == 0 else ""),
         "anomaly_trend": f"Reading the anomaly trend by {a.get('by', 'severity')}",
         "hotspots": f"Finding hotspots by {a.get('by', 'store')}",
         "list_alerts": "Listing alerts" + (f" ({a.get('severity')})" if a.get("severity") else ""),

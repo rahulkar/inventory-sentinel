@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp, type ActTab } from "../context";
@@ -51,7 +52,7 @@ export function ActPage() {
           <b>No detector yet.</b>
           <div className="muted">Train the methods first; the winner becomes the model in use.</div>
           <button className="btn primary mt" onClick={() => setPage(datasets.length ? "train" : "data")}>
-            {datasets.length ? "Go to Train →" : "Go to Data →"}
+            {datasets.length ? "Go to Train" : "Go to Data"} <ArrowRight size={16} aria-hidden="true" />
           </button>
         </EmptyState>
       </div>

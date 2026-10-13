@@ -1,3 +1,4 @@
+import { ExternalLink, Plus } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -204,7 +205,7 @@ function ConnectorRow({ c }: { c: Connector }) {
         </button>
         {caps?.backoffice_url ? (
           <a className="btn sm" href={caps.backoffice_url} target="_blank" rel="noreferrer">
-            Open back-office ↗
+            Open back-office <ExternalLink size={14} aria-hidden="true" />
           </a>
         ) : null}
         <span className="spacer" />
@@ -251,7 +252,7 @@ export function ConnectorsCard() {
         ) : (
           <div className="row">
             <button className="btn" onClick={() => setAdding(true)}>
-              + Add a connector
+              <Plus size={16} aria-hidden="true" /> Add a connector
             </button>
             {!connectors.length ? <span className="small muted">Try the bundled demo vendor: start it with the dev scripts, then add it here.</span> : null}
           </div>

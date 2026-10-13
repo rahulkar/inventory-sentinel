@@ -256,6 +256,32 @@ def hotspots(run_id: str | None = None, by: str = "store", top: int = 10) -> dic
     return _ok(**_run_note(rid), by=by, hotspots=rd.aggregates.get(key, [])[: max(1, min(int(top), 20))])
 
 
+def executive_overview(days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None, run_id: str | None = None) -> dict[str, Any]:
+    """The board figures shown on the Executive overview page: revenue at risk (units at risk x selling price on open cases, red above the threshold),
+    verified loss prevented (closed cases that were real problems), inventory accuracy (counts within 1 unit or 2% of the books) and its change
+    against the previous period, resolution within SLA, overdue cases, weekly new-alert trends for the top stores and categories, and the top 5 stores.
+
+    Args:
+        days: Period ending on the data's last day: 30, 90, or 0 for all data.
+        region: Optional region name, e.g. "London".
+        store_id: Optional store id, e.g. "S014".
+        category: Optional category, e.g. "womenswear".
+        run_id: Detection run id; defaults to the selected/newest run.
+    """
+    rid = _run_id(run_id)
+    if not rid:
+        return _err("No detection run yet. Run detection on the Act page (or propose a detect job).")
+    from app.services import executive
+
+    try:
+        s = executive.summary(rid, days=max(0, int(days)), region=region or None, store_id=store_id or None, category=category or None)
+    except LookupError as exc:
+        return _err(str(exc))
+    out = s.model_dump(exclude={"options"})
+    out["revenue_at_risk_level"] = "red" if s.revenue_at_risk_gbp > s.threshold_gbp else "amber"
+    return _ok(**_run_note(rid), **out)
+
+
 def list_alerts(run_id: str | None = None, severity: str | None = None, likely_type: str | None = None, store_id: str | None = None, team: str | None = None, category: str | None = None, status: str | None = None, sort: str = "priority", limit: int = 10) -> dict[str, Any]:
     """List alerts (incidents) from a detection run with filters. Each alert has severity, likely type, value at risk, P(true anomaly), reasons and triage status.
 
@@ -674,7 +700,7 @@ def find_sop(query: str, k: int = 3) -> dict[str, Any]:
 
 CATALOGUE = [
     list_datasets, describe_dataset, preview_rows, available_algorithms, list_models, model_detail, list_experiments,
-    list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series,
+    list_detection_runs, alert_summary, executive_overview, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series,
     investigation_plan, compare_plans, triage_summary, propose_job, job_status, search_docs, explain_metric, app_state, usage_summary,
     list_connectors, connector_status, vendor_lookup, list_vendor_tasks, list_schedules, schedule_history, get_sop, find_sop,
 ]

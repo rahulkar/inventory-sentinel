@@ -279,7 +279,7 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
           Snapshot of {String(ds.params?.connector_name ?? "the vendor")} ({String(ds.params?.window_start ?? ds.date_start)} to {String(ds.params?.synced_through ?? ds.date_end)}), synced {fmtDate(String(ds.params?.synced_at ?? ds.created_at))}. Each sync makes a new snapshot; team feedback carries over between them.
         </div>
       ) : null}
-      <NextStep title="Next: train the detectors" description="Four methods learn what normal looks like from this vendor's own history and are marked on the last four weeks." cta="Go to Train →" onClick={() => setPage("train")} />
+      <NextStep title="Next: train the detectors" description="Four methods learn what normal looks like from this vendor's own history and are marked on the last four weeks." cta="Go to Train" onClick={() => setPage("train")} />
     </div>
   );
 }

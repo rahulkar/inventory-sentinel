@@ -39,7 +39,7 @@ const QUICK: Record<string, string[]> = {
   models: ["Compare the methods in plain words", "What drives the model in use?", "Propose exporting the model in use to ONNX"],
   experiments: ["Summarise the last training run", "Which anomaly types does each method miss?", "What would you try next?"],
   assistant: ["What do I have loaded right now?", "Which stores have the most money at risk?", "Who is on your team and what has it cost so far?"],
-  exec_overview: ["What is the business case?", "Where should we act first?", "How does the AI decide, in plain words?"],
+  exec_overview: ["Summarise the board figures for the last 90 days", "Which stores carry the most revenue at risk?", "Why are cases missing the SLA?"],
   exec_alerts: ["Why was the top alert flagged?", "Which stores need a visit this week?", "Is this theft or a counting mistake?"],
   exec_plan: ["What do 120 investigator hours buy us?", "Is it worth adding more investigators?", "What would it take to run this on our real data?"],
   exec_story: ["What is the business case?", "How does the AI decide, in plain words?", "What would it take to run this on our real data?"],

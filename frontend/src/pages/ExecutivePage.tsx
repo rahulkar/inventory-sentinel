@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Clock, Download, Info, MapPin, Play, ShieldCheck, Tag, TriangleAlert, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { useApp } from "../context";
@@ -373,65 +374,17 @@ function TrendCard({ title, sub, trend, kind }: { title: string; sub: string; tr
   );
 }
 
-function Svg({ children, size = 34, color = "currentColor" }: { children: ReactNode; size?: number; color?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-const IconAlert = ({ color }: { color: string }) => (
-  <Svg color={color}>
-    <path d="M12 3 2 20h20L12 3z" />
-    <path d="M12 10v4.5M12 17.2v.1" />
-  </Svg>
-);
-const IconShield = () => (
-  <Svg color="#1a9fe0">
-    <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
-    <path d="m8.8 12 2.3 2.3 4.3-4.6" />
-  </Svg>
-);
-const IconBars = () => (
-  <Svg color="#1a9fe0">
-    <path d="M6 20v-6M10 20V10M14 20V7M18 20V4" strokeWidth={3} />
-  </Svg>
-);
-const IconClock = () => (
-  <Svg color="#121826">
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3.5 2" />
-  </Svg>
-);
-const IconCalendar = () => (
-  <Svg size={16}>
-    <rect x="3.5" y="5" width="17" height="15" rx="2" />
-    <path d="M3.5 10h17M8 3v4M16 3v4" />
-  </Svg>
-);
-const IconPin = () => (
-  <Svg size={16}>
-    <path d="M12 21s-6.5-6.1-6.5-11a6.5 6.5 0 0 1 13 0c0 4.9-6.5 11-6.5 11z" />
-    <circle cx="12" cy="10" r="2.3" />
-  </Svg>
-);
-const IconTag = () => (
-  <Svg size={16}>
-    <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.3 7.3a1 1 0 0 1-1.4 0l-8.3-8.3z" />
-    <circle cx="8" cy="8" r="1.4" />
-  </Svg>
-);
-const IconExport = () => (
-  <Svg size={16}>
-    <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15" />
-  </Svg>
-);
-const IconInfo = () => (
-  <Svg size={15}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v5M12 7.8v.1" />
-  </Svg>
-);
+const KPI_ICON = { size: 34, strokeWidth: 1.7, "aria-hidden": true } as const;
+const FILTER_ICON = { size: 16, "aria-hidden": true } as const;
+const IconAlert = ({ color }: { color: string }) => <TriangleAlert {...KPI_ICON} color={color} />;
+const IconShield = () => <ShieldCheck {...KPI_ICON} color="#1a9fe0" />;
+const IconBars = () => <ChartColumnIncreasing {...KPI_ICON} color="#1a9fe0" />;
+const IconClock = () => <Clock {...KPI_ICON} color="#121826" />;
+const IconCalendar = () => <Calendar {...FILTER_ICON} />;
+const IconPin = () => <MapPin {...FILTER_ICON} />;
+const IconTag = () => <Tag {...FILTER_ICON} />;
+const IconExport = () => <Download {...FILTER_ICON} />;
+const IconInfo = () => <Info size={15} aria-hidden="true" />;
 
 function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof usePipeline>; onCancel: (id: string) => void; hasRun: boolean }) {
   const { connectors, setPage, setMode } = useApp();
@@ -459,7 +412,7 @@ function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof useP
             return (
               <li key={s.key} className={`step-${state}`}>
                 <span className="step-dot" aria-hidden="true">
-                  {state === "done" ? "✓" : state === "failed" ? "!" : i + 1}
+                  {state === "done" ? <Check size={15} strokeWidth={3} /> : state === "failed" ? <X size={15} strokeWidth={3} /> : i + 1}
                 </span>
                 <span>
                   <b>{s.label}</b>
@@ -494,7 +447,7 @@ function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof useP
                   ))
                 : null}
               <button className="btn primary lg" onClick={() => void pipe.start(chosen.id)}>
-                ▶ Run the whole pipeline
+                <Play size={16} fill="currentColor" aria-hidden="true" /> Run the whole pipeline
               </button>
             </div>
           ) : (
@@ -508,7 +461,7 @@ function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof useP
                     setPage("data");
                   }}
                 >
-                  Go to Data → Connect
+                  Go to Data <ChevronRight size={14} aria-hidden="true" /> Connect <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </div>
             </div>

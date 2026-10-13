@@ -1,3 +1,4 @@
+import { Check, Circle, Diamond, Play, Settings, TriangleAlert, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAssistant } from "../assistant/AssistantContext";
 import { useApp, type Page } from "../context";
@@ -116,7 +117,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <button className={`ai-chip ${ai?.configured && ai.available ? "on" : ""} ${page === "settings" ? "active" : ""}`} onClick={() => setPage("settings")} title={`AI gateway settings${ai?.configured && ai.available ? ` (model: ${ai.model})` : ""}`}>
               <span className={`dot ${ai?.configured && ai.available ? "" : "off"}`} />
               <span className="hide-compact clip">{ai?.configured && ai.available ? `AI: ${ai.model}` : "AI: not configured"}</span>
-              <span className="gear">⚙</span>
+              <Settings className="gear" size={14} aria-hidden="true" />
             </button>
             )}
             {activeJobs.length || (!exec && recent.length) ? (
@@ -156,7 +157,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </button>
             ))}
             <button className={page === "story" ? "active" : ""} aria-current={page === "story" ? "page" : undefined} onClick={() => setPage("story")}>
-              ▶ Story
+              <Play size={12} fill="currentColor" aria-hidden="true" /> Story
             </button>
           </nav>
         ) : null}
@@ -201,7 +202,7 @@ export function StatCard({ label, value, sub }: { label: string; value: ReactNod
 }
 
 export function SeverityChip({ severity }: { severity: string }) {
-  const icon = severity === "critical" ? "▲" : severity === "high" ? "◆" : "●";
+  const icon = severity === "critical" ? <TriangleAlert size={12} strokeWidth={2.5} /> : severity === "high" ? <Diamond size={11} strokeWidth={2.5} fill="currentColor" /> : <Circle size={9} fill="currentColor" />;
   return (
     <span className={`chip sev-${severity}`}>
       <span aria-hidden="true">{icon}</span>
@@ -220,7 +221,7 @@ export function TypeChip({ type, confidence }: { type: string; confidence?: numb
 }
 
 export function OutcomeChip({ outcome }: { outcome: string }) {
-  const icon = outcome === "false_alarm" ? "✕" : outcome === "open" ? "○" : "✓";
+  const icon = outcome === "false_alarm" ? <X size={12} strokeWidth={2.5} /> : outcome === "open" ? <Circle size={11} strokeWidth={2.5} /> : <Check size={12} strokeWidth={3} />;
   return (
     <span className={`chip out-${outcome}`}>
       <span aria-hidden="true">{icon}</span>

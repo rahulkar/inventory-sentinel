@@ -101,7 +101,7 @@ export function SettingsPage() {
         </div>
         <span className={`chip ${status?.configured ? "status-done" : "neutral"}`}>{status?.configured ? `AI connected · ${status.model}` : "AI not configured"}</span>
       </div>
-      <div className="grid grid-side" style={{ gridTemplateColumns: "minmax(0, 1fr) 380px" }}>
+      <div className="grid grid-side narrow">
         <div className="card">
           <div className="card-title">
             <h3>AI gateway (LiteLLM)</h3>

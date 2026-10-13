@@ -39,7 +39,7 @@ GUARDRAILS = """Rules:
 7. Detection runs remember which model produced them. When figures come from a run whose model is NOT the model in use (the tool result says so), say which model produced them and offer to run detection with the model in use.
 8. Describe what the data shows as patterns "consistent with" theft, fraud or error. Never accuse a person or a team; the data holds no employee identities.
 9. Accuracy figures from a demo vendor's answer key (injected anomalies) must be called that, e.g. "on the demo vendor's answer key"; real vendors have none, so on real data accuracy comes from loss-prevention flags and team feedback.
-10. When CURRENT STATE says the audience is executive, answer in under 90 words: two or three short plain sentences (money at risk, what to do first, expected return), then at most three one-line bullets. Avoid jargon such as average precision, P(true), percentile, ROC or threshold unless asked; say "confidence" or "x times better than today's rule" instead.
+10. When CURRENT STATE says the audience is executive, answer in under 90 words: two or three short plain sentences (money at risk, what to do first, expected return), then at most three one-line bullets. Take board figures (revenue at risk, loss prevented, inventory accuracy, SLA, overdue cases) from executive_overview so they match the Executive overview page, and say which period they cover. Avoid jargon such as average precision, P(true), percentile, ROC or threshold unless asked; say "confidence" or "x times better than today's rule" instead.
 11. vendor_lookup is LIVE vendor data: say it is live and quote its as-of date; snapshot figures (alerts, runs) can be older. When stock is missing, say what the SOP says to do next (get_sop) and who to escalate to, rather than improvising a procedure.
 """
 
@@ -63,7 +63,8 @@ def _instruction(role_text: str) -> Callable[[ReadonlyContext], str]:
 
 
 ROOT_ROLE = """Your role: the front door. Answer greetings, "what do I have loaded", status and quick questions yourself
-(use app_state or the CURRENT STATE). For deeper work hand over to a specialist by transferring to them:
+(use app_state or the CURRENT STATE) and headline business figures yourself (executive_overview: revenue at risk, loss
+prevented, inventory accuracy, resolution within SLA, overdue cases, for a period, region, store or category). For deeper work hand over to a specialist by transferring to them:
 - data_analyst: datasets and snapshots, columns, loss-prevention flags, live stock lookups in the vendor system, importing or re-mapping CSVs.
 - model_analyst: methods, metrics, which model is best and why, drivers, training, feedback retraining, ONNX export, switching the model in use.
 - alert_investigator: detection runs, alerts, why something was flagged, store/SKU drill-downs, trends and hotspots; running detection.
@@ -113,11 +114,11 @@ concrete and short; offer the "How it works" page for a guided story."""
 
 # The team: the first entry is the front door, the rest are specialists it can hand over to.
 TEAM_SPECS: list[dict[str, Any]] = [
-    {"name": "sentinel_assistant", "label": "Front door", "description": "Front door: greets, answers quick questions about the app and current state, routes deeper questions to specialists.", "role": ROOT_ROLE, "tools": A.unique(A.COMMON)},
+    {"name": "sentinel_assistant", "label": "Front door", "description": "Front door: greets, answers quick questions about the app and current state, routes deeper questions to specialists.", "role": ROOT_ROLE, "tools": A.unique(A.COMMON, A.EXEC)},
     {"name": "data_analyst", "label": "Data analyst", "description": "Datasets and vendor snapshots: what is loaded, columns, loss-prevention flags, live stock lookups, importing or re-mapping CSVs, syncing.", "role": DATA_ROLE, "tools": A.unique(A.COMMON, A.DATA, [A.list_connectors, A.vendor_lookup], A.JOBS)},
     {"name": "model_analyst", "label": "Model analyst", "description": "Detection methods and models: metrics, comparisons, drivers, training, feedback retraining, ONNX export, model in use.", "role": MODEL_ROLE, "tools": A.unique(A.COMMON, A.MODEL, [A.list_datasets], A.JOBS)},
-    {"name": "alert_investigator", "label": "Alert investigator", "description": "Detection runs and alerts: why something was flagged, store/SKU drill-downs, the SOP to follow, live stock, trends and hotspots, running detection.", "role": ALERT_ROLE, "tools": A.unique(A.COMMON, A.ALERTS, A.SOP, [A.vendor_lookup, A.list_vendor_tasks], A.JOBS)},
-    {"name": "lp_planner", "label": "Loss-prevention planner", "description": "Investigator hours: which alerts to work first, expected recovery, return on cost, breakeven, work lists per team, escalation per SOP.", "role": PLAN_ROLE, "tools": A.unique(A.COMMON, A.PLAN, A.SOP)},
+    {"name": "alert_investigator", "label": "Alert investigator", "description": "Detection runs and alerts: why something was flagged, store/SKU drill-downs, the SOP to follow, live stock, trends and hotspots, running detection.", "role": ALERT_ROLE, "tools": A.unique(A.COMMON, A.ALERTS, A.EXEC, A.SOP, [A.vendor_lookup, A.list_vendor_tasks], A.JOBS)},
+    {"name": "lp_planner", "label": "Loss-prevention planner", "description": "Investigator hours: which alerts to work first, expected recovery, return on cost, breakeven, work lists per team, escalation per SOP.", "role": PLAN_ROLE, "tools": A.unique(A.COMMON, A.PLAN, A.EXEC, A.SOP)},
     {"name": "ops_coordinator", "label": "Operations coordinator", "description": "Vendor connectors and syncs, schedules (create, change, run, history), vendor tasks, SOPs for missing stock and failed feeds.", "role": OPS_ROLE, "tools": A.unique(A.COMMON, A.VENDOR, A.OPS, A.SOP, [A.list_detection_runs, A.list_alerts, A.list_models, A.available_algorithms], A.JOBS)},
     {"name": "explainer", "label": "Explainer", "description": "How Inventory Sentinel works, the leadership story, glossary, how to use each screen, troubleshooting.", "role": EXPLAINER_ROLE, "tools": A.unique(A.COMMON)},
 ]
@@ -131,7 +132,7 @@ def team_roster(agent_mode: str = "team") -> list[dict[str, Any]]:
 
 
 def ALL_TOOLS() -> list[Callable[..., Any]]:  # noqa: N802
-    return A.unique(A.COMMON, A.DATA, A.VENDOR, A.MODEL, A.ALERTS, A.PLAN, A.OPS, A.SOP, A.JOBS)
+    return A.unique(A.COMMON, A.DATA, A.VENDOR, A.MODEL, A.ALERTS, A.EXEC, A.PLAN, A.OPS, A.SOP, A.JOBS)
 
 
 def _cfg(settings: LlmSettings) -> types.GenerateContentConfig:

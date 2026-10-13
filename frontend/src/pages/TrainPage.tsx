@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -156,7 +157,7 @@ export function TrainPage() {
           <b>No data to train on yet.</b>
           <div className="muted">Create or import a dataset first.</div>
           <button className="btn primary mt" onClick={() => setPage("data")}>
-            Go to Data →
+            Go to Data <ArrowRight size={16} aria-hidden="true" />
           </button>
         </EmptyState>
       </div>
@@ -206,7 +207,7 @@ export function TrainPage() {
                 ) : null}
               </div>
             ))}
-            <div className="form-grid mt">
+            <div className="form-grid single mt">
               <label className="field">
                 <span>
                   History sample <Help text="Rows from the history window the methods learn from. Days flagged by loss prevention are held out." />
@@ -306,7 +307,7 @@ export function TrainPage() {
               </div>
             </TechnicalDetails>
           ) : null}
-          {best ? <NextStep title="Next: run detection" description={`Score all ${num.format(ds.n_rows)} store-SKU-days with ${best.label} and get alerts.`} cta="Go to Act →" onClick={() => setPage("act")} /> : null}
+          {best ? <NextStep title="Next: run detection" description={`Score all ${num.format(ds.n_rows)} store-SKU-days with ${best.label} and get alerts.`} cta="Go to Act" onClick={() => setPage("act")} /> : null}
         </div>
       </div>
     </div>

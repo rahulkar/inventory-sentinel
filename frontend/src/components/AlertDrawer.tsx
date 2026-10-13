@@ -1,3 +1,4 @@
+import { ArrowRight, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { SopChecklist } from "./SopChecklist";
 import { api } from "../api";
@@ -48,7 +49,7 @@ export function AlertDrawer() {
         <div className="card-title">
           <h2>{s ? `${s.store_name} · ${s.sku_name}` : "Stock story"}</h2>
           <button className="btn sm link" onClick={() => openDrawer(null)} aria-label="Close">
-            ✕
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
         {!s ? (
@@ -112,7 +113,7 @@ export function AlertDrawer() {
                     setPage("alerts");
                   }}
                 >
-                  Record the outcome →
+                  Record the outcome <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </div>
             ) : null}

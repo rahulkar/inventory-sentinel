@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
@@ -28,7 +29,7 @@ export function ExperimentsPage() {
           <p>Every training run, rebuilt from the saved models so it survives restarts: the leaderboard, precision-recall curves and the dataset each run used.</p>
         </div>
         <button className="btn" onClick={() => setPage("train")}>
-          New run →
+          New run <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
       {!runs.length ? (
@@ -66,7 +67,7 @@ export function ExperimentsPage() {
                 <div className="card-title">
                   <h2>{run.run_name}</h2>
                   <span className="small muted">
-                    {run.dataset_name} · job {run.job_id}
+                    {run.dataset_name} · {run.job_id}
                   </span>
                 </div>
                 {run.live && run.live.status === "running" ? <div className="alert info small">Running: {run.live.progress.done ?? 0}/{run.live.progress.total ?? 0} methods done.</div> : null}
