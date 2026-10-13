@@ -33,6 +33,25 @@
         "8020"
       ],
       "port": 8020
+    },
+    {
+      "name": "app-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--app-dir",
+        "backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8011"
+      ],
+      "port": 8011,
+      "env": {
+        "SENTINEL_DEFAULT_CONNECTOR_URL": "http://127.0.0.1:8020/mcp/"
+      }
     }
   ]
 }

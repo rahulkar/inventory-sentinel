@@ -589,6 +589,7 @@ class ExecutiveSummary(BaseModel):
     sla_days: int
     overdue_cases: int
     patterns: list[dict[str, Any]]  # [{type, cases, revenue_gbp}] open cases by likely type, most first
+    top_categories: list[dict[str, Any]]  # [{category, cases, revenue_gbp}] open cases by product category, top 5
     top_locations: list[dict[str, Any]]
 
 

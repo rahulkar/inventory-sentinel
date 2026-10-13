@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Clock, Download, Info, MapPin, Play, ShieldCheck, Tag, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Download, Info, MapPin, Play, ShieldCheck, Tag, TriangleAlert, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { useApp } from "../context";
@@ -200,41 +200,25 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
               }
               title="Share of store-item-days whose count matched the expected stock within 1 unit or 2%"
             />
-            <Kpi icon={<IconClock />} label="Resolution within SLA" value={data.sla_within_pct === null ? "–" : `${Math.round(data.sla_within_pct)}%`} sub={`Target ${data.sla_target_pct}%`} title={`Closed cases resolved within ${data.sla_days} days of the last flagged day`} />
+            {(() => {
+              const top = data.top_categories[0];
+              return (
+                <Kpi
+                  icon={<IconCategory />}
+                  label="Top anomalies by category"
+                  value={top ? cap(top.category) : "–"}
+                  sub={top ? `${num.format(top.cases)} open cases · ${money(top.revenue_gbp)} at risk` : "No open cases"}
+                  title={data.top_categories.slice(0, 3).map((c, i) => `${i + 1}. ${cap(c.category)}: ${num.format(c.cases)} open, ${money(c.revenue_gbp)} at risk`).join("\n")}
+                />
+              );
+            })()}
           </div>
 
           <div className="exov-row2">
             <PatternsCard data={data} filters={filters} onClear={() => set({ location: "", category: "" })} />
             <ExposureCard data={data} filters={filters} onAllLocations={() => set({ location: "" })} />
 
-            <div className="card exov-card exov-res">
-              <h2>Resolution performance</h2>
-              <div className="exov-overdue">
-                <IconAlert color={RED} />
-                <div>
-                  <b>{num.format(data.overdue_cases)}</b>
-                  <span>Overdue cases</span>
-                </div>
-              </div>
-              <p className="small muted">Critical and high cases still open {data.sla_days}+ days after the last flagged day.</p>
-              {data.sla_within_pct === null ? (
-                <p className="muted">No closed cases in this period yet.</p>
-              ) : (
-                <div className="exov-sla">
-                  <div className="exov-sla-row">
-                    <b>{Math.round(data.sla_within_pct)}% within SLA</b>
-                    <span className="muted">Target {data.sla_target_pct}%</span>
-                  </div>
-                  <div className="exov-meter" role="img" aria-label={`${Math.round(data.sla_within_pct)}% of closed cases resolved within SLA, target ${data.sla_target_pct}%`}>
-                    <span style={{ width: `${Math.min(100, data.sla_within_pct)}%` }} />
-                    <i style={{ left: `${data.sla_target_pct}%` }} />
-                  </div>
-                </div>
-              )}
-              <button className="exov-outline" onClick={() => setPage("alerts")}>
-                View resolutions
-              </button>
-            </div>
+            <CategoriesCard data={data} filters={filters} onAllCategories={() => set({ category: "" })} onView={() => setPage("alerts")} />
           </div>
 
           <div className="exov-foot">
@@ -409,12 +393,90 @@ function ExposureCard({ data, filters, onAllLocations }: { data: ExecutiveSummar
   );
 }
 
-const KPI_ICON = { size: 34, strokeWidth: 1.7, "aria-hidden": true } as const;
+const TOP_KEY = "sentinel.execTopN";
+
+/** Product categories ranked by open anomalies, top 3 or 5. One category selected has nothing to rank, so it explains instead. */
+function CategoriesCard({ data, filters, onAllCategories, onView }: { data: ExecutiveSummary; filters: Filters; onAllCategories: () => void; onView: () => void }) {
+  const [topN, setTopN] = useState<3 | 5>(() => {
+    try {
+      return window.localStorage.getItem(TOP_KEY) === "3" ? 3 : 5;
+    } catch {
+      return 5;
+    }
+  });
+  const pick = (n: 3 | 5) => {
+    setTopN(n);
+    try {
+      window.localStorage.setItem(TOP_KEY, String(n));
+    } catch {
+      /* the choice lasts for this tab only */
+    }
+  };
+  const rows = data.top_categories.slice(0, topN);
+  const max = Math.max(1, ...rows.map((c) => c.cases));
+  const place = scopeName({ ...filters, category: "" }, data);
+  return (
+    <div className="card exov-card exov-res">
+      <div className="exov-card-head">
+        <div>
+          <h2>Top anomalies by category</h2>
+          <p>Open cases{place ? ` in ${place}` : ""} · revenue at risk</p>
+        </div>
+        {!filters.category && data.top_categories.length > 3 ? (
+          <div className="exov-topn" role="group" aria-label="How many categories">
+            {([3, 5] as const).map((n) => (
+              <button key={n} className={topN === n ? "on" : ""} aria-pressed={topN === n} onClick={() => pick(n)}>
+                Top {n}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {filters.category ? (
+        <CardEmpty art={<EmptyClipboardArt />} title="One category selected">
+          <span>
+            This view ranks categories against each other. {cap(filters.category)} has {num.format(data.open_cases)} open case{data.open_cases === 1 ? "" : "s"} and {money(data.revenue_at_risk_gbp)} at risk.
+          </span>
+          <button className="btn sm link" onClick={onAllCategories}>
+            Compare all categories
+          </button>
+        </CardEmpty>
+      ) : rows.length ? (
+        <ol className="exov-cats" aria-label={`Top ${rows.length} categories by open anomalies`}>
+          {rows.map((c, i) => (
+            <li key={c.category}>
+              <span className="exov-cats-rank">{i + 1}</span>
+              <div className="exov-cats-body">
+                <div className="exov-cats-line">
+                  <span className="exov-bars-label">{cap(c.category)}</span>
+                  <b>{num.format(c.cases)}</b>
+                </div>
+                <span className="exov-bars-track" aria-hidden="true">
+                  <span style={{ width: `${(c.cases / max) * 100}%`, background: c.revenue_gbp > data.threshold_gbp ? RED : AMBER }} />
+                </span>
+                <span className="exov-cats-sub">{money(c.revenue_gbp)} at risk</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <CardEmpty art={<EmptyChartArt />} title="No open anomalies here">
+          <span>No category has open cases{scopeText(filters, data)} in this period.</span>
+        </CardEmpty>
+      )}
+      <button className="exov-outline" onClick={onView}>
+        View cases
+      </button>
+    </div>
+  );
+}
+
+const KPI_ICON ={ size: 34, strokeWidth: 1.7, "aria-hidden": true } as const;
 const FILTER_ICON = { size: 16, "aria-hidden": true } as const;
 const IconAlert = ({ color }: { color: string }) => <TriangleAlert {...KPI_ICON} color={color} />;
 const IconShield = () => <ShieldCheck {...KPI_ICON} color="#1a9fe0" />;
 const IconBars = () => <ChartColumnIncreasing {...KPI_ICON} color="#1a9fe0" />;
-const IconClock = () => <Clock {...KPI_ICON} color="#121826" />;
+const IconCategory = () => <Tag {...KPI_ICON} color="#121826" />;
 const IconCalendar = () => <Calendar {...FILTER_ICON} />;
 const IconPin = () => <MapPin {...FILTER_ICON} />;
 const IconTag = () => <Tag {...FILTER_ICON} />;

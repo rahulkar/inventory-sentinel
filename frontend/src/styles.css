@@ -763,16 +763,19 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-empty b { color: var(--text); font-size: 14px; }
 
 .exov-res { display: flex; flex-direction: column; gap: 10px; }
-.exov-overdue { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
-.exov-overdue b { display: block; font-size: 30px; line-height: 1.1; color: var(--critical); font-variant-numeric: tabular-nums; }
-.exov-overdue span { color: var(--text-2); }
-.exov-res > .small { margin: 0; }
-.exov-sla { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.exov-sla-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.exov-sla-row b { font-size: 17px; }
-.exov-meter { position: relative; height: 12px; background: #dce3ea; border-radius: 3px; }
-.exov-meter > span { position: absolute; inset: 0 auto 0 0; background: #1a9fe0; border-radius: 3px; }
-.exov-meter > i { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); }
+.exov-res .exov-card-head { margin-bottom: 0; }
+.exov-topn { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.exov-topn button { font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; border: none; background: var(--surface); color: var(--text-2); cursor: pointer; }
+.exov-topn button + button { border-left: 1px solid var(--border); }
+.exov-topn button.on { background: #1a9fe0; color: #fff; }
+.exov-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.exov-cats li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.exov-cats-rank { flex: 0 0 22px; height: 22px; border-radius: 50%; background: #eef8fd; color: #0b78ad; font-weight: 700; font-size: 12px; display: grid; place-items: center; }
+.exov-cats-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.exov-cats-line { display: flex; justify-content: space-between; gap: 8px; }
+.exov-cats-line b { font-variant-numeric: tabular-nums; }
+.exov-cats .exov-bars-track { height: 8px; }
+.exov-cats-sub { font-size: 12px; color: var(--text-2); }
 .exov-outline { margin-top: auto; align-self: center; width: min(100%, 260px); font: inherit; font-size: 14px; font-weight: 600; color: #0b78ad; background: var(--surface); border: 1.5px solid #1a9fe0; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
 .exov-outline:hover { background: #eef8fd; }
 .exov-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); border-bottom: 4px solid #1a9fe0; padding-bottom: 10px; }

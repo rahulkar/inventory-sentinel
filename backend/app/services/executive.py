@@ -71,6 +71,9 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
     # unusual patterns: open cases by the model's provisional cause, most cases first
     pat = op.groupby("likely_type").agg(cases=("alert_key", "size"), revenue=("revenue", "sum")).sort_values(["cases", "revenue"], ascending=False) if len(op) else pd.DataFrame(columns=["cases", "revenue"])
 
+    # top categories: open cases by product category, most cases first
+    cats = op.groupby("category").agg(cases=("alert_key", "size"), revenue=("revenue", "sum")).sort_values(["cases", "revenue"], ascending=False).head(5) if len(op) else pd.DataFrame(columns=["cases", "revenue"])
+
     top = op.groupby(["store_id", "store_name"])["revenue"].sum().sort_values(ascending=False).head(5) if len(op) else pd.Series(dtype=float)
     stores = ds.stores
     return ExecutiveSummary(
@@ -93,6 +96,7 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
         sla_days=sla,
         overdue_cases=overdue,
         patterns=[{"type": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2)} for k, r in pat.iterrows()],
+        top_categories=[{"category": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2)} for k, r in cats.iterrows()],
         top_locations=[{"store_id": k[0], "label": k[1], "value_gbp": round(float(v), 2)} for k, v in top.items()],
     )
 

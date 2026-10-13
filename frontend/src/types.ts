@@ -1074,6 +1074,7 @@ export interface ExecutiveSummary {
   sla_days: number;
   overdue_cases: number;
   patterns: { type: string; cases: number; revenue_gbp: number }[];
+  top_categories: { category: string; cases: number; revenue_gbp: number }[];
   top_locations: { store_id: string; label: string; value_gbp: number }[];
 }
 
