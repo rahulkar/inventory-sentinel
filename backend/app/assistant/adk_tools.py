@@ -57,7 +57,7 @@ async def propose_job(kind: str, params: dict[str, Any] | None = None, tool_cont
     Args:
         kind: One of
             "sync" (connector_id, full) - pull new days from a vendor connector into a fresh snapshot;
-            "train" (dataset_id, models: list of method keys zscore/iforest/autoencoder/lof, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
+            "train" (dataset_id, models: list of method keys zscore/iforest/autoencoder/lof/ensemble, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
             "retrain_feedback" (model_id, alpha); "activate_model" (model_id); "configure" (dataset_id, column_map) for imported CSVs;
             "export_dataset" (dataset_id); "export_onnx" (model_id);
             "create_schedule" (name, connector_id, at "HH:MM", days ["mon",...] or every_hours, timezone, model_policy "active"/"fixed"/"retrain",

@@ -139,6 +139,7 @@ export const MODEL_PLAIN: Record<string, string> = {
   iforest: "Isolation forest: unusual days are isolated by few random splits",
   autoencoder: "Autoencoder: a small network rebuilds normal days; what it cannot rebuild is unusual",
   lof: "Local outlier factor: days in a sparser neighbourhood than their neighbours",
+  ensemble: "Ensemble: Isolation Forest and LOF add up how surprising each finds the day",
   reranker: "Feedback re-ranker: a detector plus what investigators confirmed",
 };
 

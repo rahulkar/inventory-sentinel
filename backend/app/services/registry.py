@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from app.schemas import ModelSpecOut, ParamSpec
 from app.services import envprobe
 from app.services import features as F
-from app.services.detectors import AutoencoderDetector, IsolationForestDetector, LOFDetector, RobustZBaseline
+from app.services.detectors import AutoencoderDetector, EnsembleDetector, IsolationForestDetector, LOFDetector, RobustZBaseline
 
 
 def P(name: str, label: str, type_: str, default: Any, **kw: Any) -> ParamSpec:
@@ -79,6 +79,15 @@ def _lof(params: dict[str, Any], seed: int, order: list[str], detect: list[str])
     return Pipeline([("pre", pre), ("model", det)])
 
 
+def _ensemble(params: dict[str, Any], seed: int, order: list[str], detect: list[str]) -> Pipeline:
+    pre = ColumnTransformer([("pass", "passthrough", _idx(order, detect))])
+    det = EnsembleDetector(
+        n_estimators=int(params.get("n_estimators", 150)), max_samples=int(params.get("max_samples", 2048)),
+        n_neighbors=int(params.get("n_neighbors", 20)), reference_size=int(params.get("reference_size", 4000)), random_state=seed,
+    )
+    return Pipeline([("pre", pre), ("model", det)])
+
+
 def _autoencoder(params: dict[str, Any], seed: int, order: list[str], detect: list[str]) -> Pipeline:
     pre = ColumnTransformer([("num", StandardScaler(), _idx(order, detect))])
     det = AutoencoderDetector(hidden=str(params.get("hidden", "16-4-16")), max_iter=int(params.get("max_iter", 60)), alpha=float(params.get("alpha", 1e-4)), random_state=seed)
@@ -119,6 +128,17 @@ REGISTRY: dict[str, ModelSpec] = {
             P("reference_size", "Reference rows", "int", 4000, min=1000, max=20000, step=500, help="Bigger reference sets are more accurate and slower to score."),
         ],
         _lof, fit_seconds=3.0, score_seconds_per_1m=30.0,
+    ),
+    "ensemble": ModelSpec(
+        "ensemble", "Ensemble (Isolation Forest + LOF)", "Ensemble: Isolation Forest and LOF vote together", "ensemble",
+        "Runs Isolation Forest and Local Outlier Factor side by side and adds how surprising each finds the day. They miss different problems, so together they rank real ones higher.",
+        [
+            P("n_estimators", "Trees", "int", 150, min=50, max=400, step=10, help="Isolation Forest trees."),
+            P("max_samples", "Rows per tree", "int", 2048, min=256, max=8192, step=256),
+            P("n_neighbors", "Neighbours", "int", 20, min=5, max=100, step=1, help="Local Outlier Factor neighbours."),
+            P("reference_size", "Reference rows", "int", 4000, min=1000, max=20000, step=500),
+        ],
+        _ensemble, fit_seconds=3.0, score_seconds_per_1m=25.0, onnx_ok=False,
     ),
 }
 

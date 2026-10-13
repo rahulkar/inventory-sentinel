@@ -22,7 +22,7 @@ stock going missing for a week while the till shows extra voids.
 
 ## Four detectives compete
 A rule of thumb (how many typical deviations today's shrinkage is from normal for the category) is the baseline. Isolation
-Forest, an autoencoder and Local Outlier Factor compete with it. The last 28% of days are held back as an exam; the
+Forest, an autoencoder, Local Outlier Factor and an ensemble of Isolation Forest and LOF compete with it. The last 28% of days are held back as an exam; the
 answer key says which days really were problems. Average precision decides the winner. Isolation Forest finds far more
 real problems than the rule of thumb in the same number of alerts, especially till fraud and internal theft that never
 show up as a single big shrinkage day.

@@ -427,7 +427,7 @@ def propose_job(kind: str, params: dict[str, Any] | None = None, session_id: str
     Args:
         kind: One of
             "sync" (connector_id, full: true/false) - pull new days from a vendor and build a fresh snapshot;
-            "train" (dataset_id, models: list of zscore/iforest/autoencoder/lof, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
+            "train" (dataset_id, models: list of zscore/iforest/autoencoder/lof/ensemble, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
             "retrain_feedback" (model_id, alpha); "activate_model" (model_id); "configure" (dataset_id, column_map) for imported CSVs;
             "export_dataset" (dataset_id); "export_onnx" (model_id);
             "create_schedule" (name, connector_id, at "HH:MM", days ["mon",...] or every_hours, timezone, model_policy active/fixed/retrain,

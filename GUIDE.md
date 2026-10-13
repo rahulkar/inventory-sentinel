@@ -107,7 +107,7 @@ imported again later.
 
 ## 4. Train
 
-Four methods learn what a normal day looks like from the history window, with no labels:
+Five methods learn what a normal day looks like from the history window, with no labels:
 
 | Method | Idea |
 |---|---|
@@ -115,6 +115,7 @@ Four methods learn what a normal day looks like from the history window, with no
 | Isolation Forest | Random splits isolate unusual days quickly |
 | Autoencoder | A small neural network rebuilds normal days; what it cannot rebuild is unusual |
 | Local Outlier Factor | Days in a sparser neighbourhood than their neighbours |
+| Ensemble | Isolation Forest and LOF together: they miss different problems, so adding up how surprising each finds a day ranks real problems higher |
 
 They look at **signals scaled to be quiet on ordinary days**: shrinkage today and over 7 days against the item's own count
 noise, gaps that reverse yesterday's, sales against the promotion-adjusted normal, missed sales in a no-sales run,

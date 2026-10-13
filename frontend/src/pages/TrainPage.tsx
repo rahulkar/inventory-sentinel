@@ -10,7 +10,7 @@ import { NextStep, TechnicalDetails } from "../components/TechnicalDetails";
 import type { ModelMeta, ModelSummary, TrainJob } from "../types";
 import { estimateSeconds, fmtDuration, isTerminal, MODEL_PLAIN, num, plain, SOURCE_LABEL } from "../utils";
 
-const CURVE_COLORS: Record<string, string> = { zscore: "#5f6878", iforest: C.series, autoencoder: "#7a1fa2", lof: "#0e7490", reranker: C.navy };
+const CURVE_COLORS: Record<string, string> = { zscore: "#5f6878", iforest: C.series, autoencoder: "#7a1fa2", lof: "#0e7490", ensemble: "#b45309", reranker: C.navy };
 
 export function Leaderboard({ models, baseAp, onUse }: { models: ModelSummary[]; baseAp: number | null; onUse?: (id: string) => void }) {
   const sorted = [...models].sort((a, b) => (b.metrics.average_precision ?? -1) - (a.metrics.average_precision ?? -1));
@@ -21,7 +21,7 @@ export function Leaderboard({ models, baseAp, onUse }: { models: ModelSummary[];
           <tr>
             <th>Method</th>
             <th className="num">
-              Average precision <Help text="How well the ranking puts real problems first (1.0 = perfect). Decides the winner." />
+              Average precision <Help text="How well the ranking puts real problems first (1.0 = perfect). Random guessing scores only the share of days that are real problems, under 0.01 here, so 0.4 is about 60x random. Decides the winner." />
             </th>
             <th className="num">vs rule of thumb</th>
             <th className="num">

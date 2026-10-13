@@ -122,6 +122,57 @@ class LOFDetector(BaseEstimator):
         return self.inner_.anomaly_score(X)
 
 
+class EnsembleDetector(BaseEstimator):
+    """Isolation Forest + Local Outlier Factor. Each score becomes a tail surprise, -log P(normal history scores at
+    least this high), against the method's own scores on a sample of the training rows; the two surprises are added.
+
+    The two methods miss different days (the forest isolates one extreme signal, LOF spots unusual combinations), so
+    the sum ranks real problems higher than either alone. LOF sees standardised inputs; the forest does not need them.
+    """
+
+    def __init__(self, n_estimators: int = 150, max_samples: int = 2048, n_neighbors: int = 20, reference_size: int = 4000, calibration_rows: int = 100_000, random_state: int = 42, engine: str = "auto") -> None:
+        self.n_estimators = n_estimators
+        self.max_samples = max_samples
+        self.n_neighbors = n_neighbors
+        self.reference_size = reference_size
+        self.calibration_rows = calibration_rows
+        self.random_state = random_state
+        self.engine = engine
+
+    def fit(self, X, y=None):
+        X = np.asarray(X, dtype=np.float32)
+        self.mean_ = X.mean(axis=0)
+        self.scale_ = X.std(axis=0)
+        self.scale_[self.scale_ < 1e-9] = 1.0
+        self.iforest_ = IsolationForestDetector(self.n_estimators, self.max_samples, self.random_state, self.engine).fit(X)
+        self.lof_ = LOFDetector(self.n_neighbors, self.reference_size, self.random_state, self.engine).fit(self._scaled(X))
+        rng = np.random.default_rng(self.random_state + 1)
+        cal = X[rng.choice(len(X), self.calibration_rows, replace=False)] if len(X) > self.calibration_rows else X
+        self.ref_iforest_ = np.sort(self.iforest_.anomaly_score(cal)).astype(np.float64)
+        self.ref_lof_ = np.sort(self.lof_.anomaly_score(self._scaled(cal))).astype(np.float64)
+        self.engine_ = "sklearn" if self.iforest_.engine_ == self.lof_.engine_ == "sklearn" else "numpy"
+        reasons = [r for r in (getattr(self.iforest_, "fallback_reason_", None), getattr(self.lof_, "fallback_reason_", None)) if r]
+        if reasons:
+            self.fallback_reason_ = reasons[0]
+        return self
+
+    def _scaled(self, X: np.ndarray) -> np.ndarray:
+        return ((X - self.mean_) / self.scale_).astype(np.float32)
+
+    @staticmethod
+    def _surprise(s: np.ndarray, ref: np.ndarray) -> np.ndarray:
+        n = len(ref)
+        return -np.log((n - np.searchsorted(ref, s, side="left") + 1) / (n + 1))
+
+    def component_scores(self, X) -> tuple[np.ndarray, np.ndarray]:
+        X = np.asarray(X, dtype=np.float32)
+        return self._surprise(self.iforest_.anomaly_score(X), self.ref_iforest_), self._surprise(self.lof_.anomaly_score(self._scaled(X)), self.ref_lof_)
+
+    def anomaly_score(self, X) -> np.ndarray:
+        a, b = self.component_scores(X)
+        return a + b
+
+
 class AutoencoderDetector(BaseEstimator):
     """A small dense autoencoder (scikit-learn MLP trained to reproduce its input); score = reconstruction error."""
 

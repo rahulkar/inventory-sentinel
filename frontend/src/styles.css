@@ -54,7 +54,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
   color: #fff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
-/* one row when everything fits; below 1200px the nav moves to its own full-width row (never clipped silently) */
+/* one row when everything fits; otherwise the nav moves to its own full-width row (never clipped silently) */
 .topbar-inner {
   max-width: 1680px; margin: 0 auto; padding: 0 var(--page-pad);
   display: flex; align-items: center; gap: 16px; height: var(--topbar-h);
@@ -88,13 +88,13 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
   .brand-word { display: none; }
   .topbar .active-model .clip { max-width: 140px; }
 }
-@media (max-width: 1279px) {
-  :root { --topbar-h: 100px; }
-  .topbar-inner { flex-wrap: wrap; row-gap: 0; height: auto; min-height: var(--topbar-h); padding-top: 6px; }
-  .topbar-inner > .brand, .topbar-inner > .topbar-right { height: 44px; }
-  .topbar-inner > .nav { order: 3; flex: 1 0 100%; min-height: 44px; border-top: 1px solid rgba(255,255,255,0.15); }
-  .brand-word { display: inline; }
-}
+/* Layout measures the nav on one row; when it would overflow the header gets .wrap-nav and the nav its own row */
+.topbar.wrap-nav ~ * { --topbar-h: 100px; }
+.topbar.wrap-nav .topbar-inner { flex-wrap: wrap; row-gap: 0; height: auto; min-height: 100px; padding-top: 6px; }
+.topbar.wrap-nav .topbar-inner > .brand, .topbar.wrap-nav .topbar-inner > .topbar-right { height: 44px; }
+.topbar.wrap-nav .topbar-inner > .nav { order: 3; flex: 1 0 100%; min-height: 44px; border-top: 1px solid rgba(255,255,255,0.15); }
+@media (min-width: 992px) { .topbar.wrap-nav .brand-word { display: inline; } }
+@media (min-width: 1280px) { .topbar.wrap-nav :is(.nav-caption, .hide-compact) { display: inline; } }
 .topbar .active-model b { color: #fff; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--good); }
 .dot.off { background: var(--text-3); }
@@ -160,6 +160,10 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 /* ---------- forms ---------- */
 label.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-2); font-weight: 600; min-width: 0; }
 label.field .hint { font-weight: 400; color: var(--text-3); font-size: 12px; }
+/* a picker with its action button: the select and the button share a bottom edge, their hints sit underneath */
+.run-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: end; }
+.run-bar > .btn { padding-top: 7px; padding-bottom: 7px; } /* same height as the select */
+@media (max-width: 767px) { .run-bar { grid-template-columns: minmax(0, 1fr); } .run-bar > .btn { white-space: normal; text-align: left; } }
 input[type="text"], input[type="number"], input[type="date"], input[type="search"], select, textarea {
   font: inherit; color: var(--text); background: var(--surface);
   border: 1px solid var(--border-control); border-radius: 8px; padding: 7px 10px; width: 100%; min-width: 0;
@@ -516,10 +520,10 @@ table.data tr.muted td { color: var(--text-3); }
   .chat-fab { right: 14px; bottom: 14px; }
   .chat-fab.open { display: none; } /* the full-screen panel has its own close button; the FAB would cover Send */
   /* phones are not a target, but keep the header usable */
-  :root { --topbar-h: 0px; }
+  :root, .topbar.wrap-nav ~ * { --topbar-h: 0px; }
   .topbar { position: relative; } /* the wrapped header is too tall to pin on a phone */
-  .topbar-inner { gap: 8px; min-height: 0; }
-  .topbar-inner > .nav { flex-wrap: wrap; overflow: visible; padding: 4px 0; row-gap: 2px; }
+  .topbar .topbar-inner, .topbar.wrap-nav .topbar-inner { flex-wrap: wrap; height: auto; gap: 8px; min-height: 0; padding-top: 6px; }
+  .topbar-inner > .nav { order: 3; flex: 1 0 100%; flex-wrap: wrap; overflow: visible; padding: 4px 0; row-gap: 2px; border-top: 1px solid rgba(255,255,255,0.15); }
   .nav-divider { display: none; }
   .topbar .active-model span { display: none; }
   .jobs-pill { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
@@ -548,7 +552,7 @@ table.data tr.muted td { color: var(--text-3); }
 .chip.out-confirmed_theft { background: #fbe4e4; color: #8d1f1f; border-color: #f0b3b3; }
 .chip.out-counting_error, .chip.out-process_issue { background: var(--primary-soft); color: var(--primary); border-color: #c5d7f2; }
 .chip.out-false_alarm { background: #e9f6e9; color: #0a6a0a; border-color: #bfe3bf; }
-.filters select, .filters input { width: auto; min-width: 140px; }
+.filters select, .filters input:not([type="checkbox"], [type="radio"]) { width: auto; min-width: 140px; }
 table.data tr.clickable { cursor: pointer; }
 table.data tr.clickable:hover td { background: var(--surface-2); }
 table.data tr.selected td { background: var(--primary-soft); }

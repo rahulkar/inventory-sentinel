@@ -17,7 +17,7 @@ interface Slide {
 /** Executive mode: 7 slides, no statistics vocabulary (the alerts slide is folded into "where"). */
 const EXEC_KEYS = ["hero", "inputs", "compete", "where", "plan", "feedback", "universal"];
 
-const LABEL: Record<string, string> = { zscore: "Rule of thumb", iforest: "Isolation Forest", autoencoder: "Autoencoder", lof: "Local Outlier Factor" };
+const LABEL: Record<string, string> = { zscore: "Rule of thumb", iforest: "Isolation Forest", autoencoder: "Autoencoder", lof: "Local Outlier Factor", ensemble: "Ensemble (Isolation Forest + LOF)" };
 
 const USE_CASES: { title: string; data: string; predicts: string; decision: string }[] = [
   { title: "Customer lifetime value", data: "orders, baskets, recency, loyalty", predicts: "what each customer will spend next year", decision: "put retention budget where it pays back" },

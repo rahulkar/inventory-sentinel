@@ -150,7 +150,7 @@ export interface ModelSpec {
   key: string;
   label: string;
   plain_label: string;
-  family: "rules" | "tree" | "neural" | "neighbours" | "supervised";
+  family: "rules" | "tree" | "neural" | "neighbours" | "ensemble" | "supervised";
   description: string;
   params: ParamSpec[];
   recommended: boolean;

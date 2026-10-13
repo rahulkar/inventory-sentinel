@@ -11,7 +11,7 @@ import { PIPELINE_STEPS, usePipeline } from "../hooks/usePipeline";
 import type { Alert } from "../types";
 import { compactGbp, gbp, num } from "../utils";
 
-const LABEL: Record<string, string> = { iforest: "Isolation Forest", autoencoder: "Autoencoder", lof: "Local Outlier Factor" };
+const LABEL: Record<string, string> = { iforest: "Isolation Forest", autoencoder: "Autoencoder", lof: "Local Outlier Factor", ensemble: "Ensemble (Isolation Forest + LOF)" };
 
 /** Executive mode home: the answer on one screen. Three numbers, where it happens, what to do first. */
 export function ExecutivePage() {

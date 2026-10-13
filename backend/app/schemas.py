@@ -165,7 +165,7 @@ class ModelSpecOut(BaseModel):
     key: str
     label: str
     plain_label: str
-    family: Literal["rules", "tree", "neural", "neighbours", "supervised"]
+    family: Literal["rules", "tree", "neural", "neighbours", "ensemble", "supervised"]
     description: str
     params: list[ParamSpec]
     recommended: bool

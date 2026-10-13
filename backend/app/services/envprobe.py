@@ -50,6 +50,7 @@ def report() -> tuple[list[str], dict[str, str]]:
     engines = {
         "iforest": "scikit-learn" if probe("sklearn.ensemble") is None else "numpy fallback",
         "lof": "scikit-learn" if probe("sklearn.neighbors") is None else "numpy fallback",
+        "ensemble": "scikit-learn" if probe("sklearn.ensemble") is None and probe("sklearn.neighbors") is None else "numpy fallback",
         "autoencoder": "scikit-learn" if probe("sklearn.neural_network") is None else "unavailable",
         "reranker": "LightGBM" if probe("lightgbm") is None else "logistic regression fallback",
         "onnx": "available" if probe("onnx") is None and probe("onnxruntime") is None else "unavailable",

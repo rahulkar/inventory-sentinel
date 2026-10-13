@@ -103,6 +103,8 @@ def score_joblib(X: np.ndarray) -> np.ndarray:
 
 
 def score_onnx(X: np.ndarray) -> np.ndarray:
+    if not (HERE / "model.onnx").exists():
+        sys.exit("This bundle has no model.onnx (the method has no ONNX graph); run without --onnx.")
     import onnxruntime as ort
 
     sess = ort.InferenceSession(str(HERE / "model.onnx"), providers=["CPUExecutionProvider"])
@@ -211,6 +213,8 @@ def onnx_supported(meta: ModelMeta, pipe: Any) -> tuple[bool, str | None]:
         return False, reason
     if meta.key == "reranker":
         return False, "The feedback re-ranker chains two models (a detector and LightGBM); use the joblib bundle."
+    if meta.key not in BUILDERS:
+        return False, f"{meta.label} has no ONNX graph yet; use the joblib bundle."
     return True, None
 
 

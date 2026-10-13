@@ -49,7 +49,7 @@ TEST_WINDOW_SHARE = 0.28  # last 28% of days are the evaluation window
 EVAL_NEGATIVES = 300_000
 PRECISION_AT_K = 1000
 INCIDENT_GAP_DAYS = 1
-RECOMMENDED_MODELS = ["zscore", "iforest", "autoencoder", "lof"]
+RECOMMENDED_MODELS = ["zscore", "iforest", "autoencoder", "lof", "ensemble"]
 
 # ---- investigation planner
 PLANNER_DEFAULTS = {"hours": 120.0, "hourly_cost": 28.0, "recovery_rate": 0.4, "horizon_days": 28}

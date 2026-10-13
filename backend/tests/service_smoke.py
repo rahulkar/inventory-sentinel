@@ -103,7 +103,7 @@ try:
     check("live stock lookup", pos["on_hand"] is not None and len(pos["last_days"]) == 3, pos)
 
     # ---- train / detect (unchanged pipeline, now on vendor data)
-    res = wait(training.start_job(TrainRequest(dataset_id=ds_id, models=[ModelSelection(key=k) for k in ["zscore", "iforest", "autoencoder", "lof"]], train_sample_size=60_000)), "train 4 methods")
+    res = wait(training.start_job(TrainRequest(dataset_id=ds_id, models=[ModelSelection(key=k) for k in ["zscore", "iforest", "autoencoder", "lof", "ensemble"]], train_sample_size=60_000)), "train 5 methods")
     for mid in res["model_ids"]:
         m = storage.get_model(mid)
         mm = m.metrics
@@ -200,7 +200,7 @@ try:
             import pandas as pd
 
             pd.read_csv(fh, nrows=20000).to_csv(os.path.join(tmp, "daily.csv"), index=False)
-    for flag in ([], ["--onnx"]):
+    for flag in ([], ["--onnx"]) if storage.get_model(best).onnx_ok else ([],):
         out = subprocess.run([sys.executable, "predict.py", "daily.csv", "scored.csv", "--skus", "skus.csv"] + flag, cwd=tmp, capture_output=True, text=True)
         print("  predict.py", flag, out.returncode, (out.stdout or out.stderr).strip()[-200:])
         check(f"bundle predict.py {flag}", out.returncode == 0, out.stderr[-300:])

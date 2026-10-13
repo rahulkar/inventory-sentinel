@@ -67,8 +67,8 @@ export function ActPage() {
         </div>
       </div>
       <div className="card">
-        <div className="row between" style={{ gap: 12, alignItems: "flex-end" }}>
-          <label className="field" style={{ minWidth: 320, flex: 1 }}>
+        <div className="run-bar">
+          <label className="field">
             Detection run
             <select value={run?.run_id ?? ""} onChange={(e) => setSelectedRunId(e.target.value)} disabled={!runs.length}>
               {!runs.length ? <option value="">No runs yet</option> : null}
@@ -80,21 +80,15 @@ export function ActPage() {
               ))}
             </select>
           </label>
-          <div className="stack" style={{ gap: 4 }}>
-            <button className="btn primary" disabled={busy || running || !ds || !activeModel} onClick={detect}>
-              {busy ? <Spinner /> : null} Run detection{activeModel ? ` with ${activeModel.label}` : ""}
-            </button>
-            <span className="small muted">
-              {ds ? `${num.format(ds.n_rows)} rows · ${fmtDuration(est)}` : "no dataset"}
-            </span>
+          <button className="btn primary" disabled={busy || running || !ds || !activeModel} onClick={detect}>
+            {busy ? <Spinner /> : null} Run detection{activeModel ? ` with ${activeModel.label}` : ""}
+          </button>
+          <div className="small muted">
+            {run ? `${num.format(run.incidents)} alerts · ${gbp.format(run.value_at_risk_gbp)} at risk · dataset ${run.dataset_name}` : null}
           </div>
+          <div className="small muted">{ds ? `${num.format(ds.n_rows)} rows · ${fmtDuration(est)}` : "no dataset"}</div>
         </div>
         {run && !run.model_in_use ? <div className="alert info small mt">This run was produced by {run.model_label}, which is not the model in use now. Run detection again to see the current model's alerts.</div> : null}
-        {run ? (
-          <div className="small muted mt">
-            {num.format(run.incidents)} alerts · {gbp.format(run.value_at_risk_gbp)} at risk · dataset {run.dataset_name}
-          </div>
-        ) : null}
         {job ? <JobProgress job={job} onCancel={cancelJob} /> : null}
       </div>
       {!run ? (

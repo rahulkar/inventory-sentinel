@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAssistant } from "../assistant/AssistantContext";
 import { useApp, type Page } from "../context";
 import { ChatDock } from "./assistant/ChatDock";
@@ -32,10 +32,27 @@ export function Layout({ children }: { children: ReactNode }) {
     .sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""))
     .slice(0, 3);
   const lead = activeJobs[0];
+  const headerRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+
+  // the nav's width depends on the mode, the AI model name, the model label and the jobs pill, so breakpoints
+  // alone cannot tell when it fits: measure it on one row and give it its own row when it would overflow
+  useLayoutEffect(() => {
+    const fit = () => {
+      const header = headerRef.current;
+      const nav = navRef.current;
+      if (!header || !nav) return;
+      header.classList.remove("wrap-nav");
+      header.classList.toggle("wrap-nav", nav.scrollWidth > nav.clientWidth + 1);
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  });
 
   return (
     <>
-      <header className="topbar">
+      <header className="topbar" ref={headerRef}>
         <div className="topbar-inner">
           <button className="brand" onClick={() => setPage("overview")} title="Home">
             <span className="brand-mark" aria-hidden="true">
@@ -47,7 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="brand-word">Inventory Sentinel</span>
           </button>
           {exec ? (
-          <nav className="nav">
+          <nav className="nav" ref={navRef}>
             {EXEC.map((p) => (
               <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
                 {p.label}
@@ -58,7 +75,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
           </nav>
           ) : (
-          <nav className="nav">
+          <nav className="nav" ref={navRef}>
             <button className={`story-link ${page === "story" ? "active" : ""}`} onClick={() => setPage("story")}>
               How it works
             </button>

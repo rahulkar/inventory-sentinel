@@ -61,6 +61,7 @@ MODEL_PLAIN: dict[str, str] = {
     "iforest": "Isolation forest: isolates odd days with random splits; unusual days need fewer splits.",
     "autoencoder": "Autoencoder: a small neural network learns to rebuild normal days; days it cannot rebuild are unusual.",
     "lof": "Local outlier factor: compares how crowded a day's neighbourhood is with its neighbours' neighbourhoods.",
+    "ensemble": "Ensemble: runs Isolation Forest and Local Outlier Factor together and adds how surprising each finds the day; they miss different problems.",
     "reranker": "Feedback re-ranker: a base detector plus a model trained on what investigators confirmed.",
 }
 
@@ -114,9 +115,10 @@ GLOSSARY: list[GlossaryEntry] = [
     GlossaryEntry("Isolation forest", "A method that isolates unusual days with random splits; odd days need fewer splits.", "Unsupervised; trained on history without labels. Score = 2^(-average path length / expected path length).", ["iforest", "isolation"]),
     GlossaryEntry("Autoencoder", "A small neural network that learns to rebuild normal days; days it cannot rebuild are unusual.", "Score = mean squared reconstruction error of the standardised features.", ["ae", "neural network"]),
     GlossaryEntry("Local outlier factor", "Compares how crowded a day's neighbourhood is with its neighbours'.", "LOF > 1 means the point sits in a sparser region than its neighbours. Scored against a fixed reference sample.", ["lof"]),
+    GlossaryEntry("Ensemble", "Runs Isolation Forest and Local Outlier Factor together and adds how surprising each finds the day.", "Each score becomes -log P(a normal training day scores at least this high); the two are summed. They miss different problems, so the sum ranks real ones higher than either alone.", ["ensemble", "combined model"]),
     GlossaryEntry("Robust z-score", "How many 'typical deviations' a value is from the median.", "z = (x - median) / (1.4826 x MAD). Unlike the mean and standard deviation, one extreme value does not distort it.", ["robust z", "mad", "median absolute deviation"]),
     GlossaryEntry("Alert rate", "The share of days the model is allowed to flag.", "The alert threshold is set so that this share of training days score above it (0.8% by default).", ["contamination", "threshold"]),
-    GlossaryEntry("Average precision", "How well the ranking puts real problems at the top; 1.0 is perfect.", "Area under the precision-recall curve on the evaluation window, using the demo vendor's answer key (or LP flags).", ["ap", "pr-auc", "pr auc"]),
+    GlossaryEntry("Average precision", "How well the ranking puts real problems at the top; 1.0 is perfect.", "Area under the precision-recall curve on the evaluation window, using the demo vendor's answer key (or LP flags). Random ranking scores the share of real days (about 0.006 on the demo data), not 0.5; and about a quarter of labelled days carry no visible signal, so even a supervised model given the answer key reaches only about 0.75.", ["ap", "pr-auc", "pr auc"]),
     GlossaryEntry("ROC-AUC", "The chance a real problem scores higher than a normal day.", "0.5 is random, 1.0 is perfect; it is generous when problems are rare, so average precision leads.", ["auc", "roc"]),
     GlossaryEntry("Precision at k", "Of the top k alerts, how many are real.", "precision@1000 = real problems among the 1,000 highest-scoring days in the evaluation window.", ["precision@k", "precision at 1000"]),
     GlossaryEntry("Recall", "Of all real problems, how many the alerts caught.", "Incident recall counts an incident as caught if any of its days was flagged.", ["incident recall", "detection rate"]),

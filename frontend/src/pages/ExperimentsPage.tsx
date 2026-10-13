@@ -8,7 +8,7 @@ import type { Experiment } from "../types";
 import { fmtDate, num } from "../utils";
 import { Leaderboard } from "./TrainPage";
 
-const COLORS: Record<string, string> = { zscore: "#5f6878", iforest: C.series, autoencoder: "#7a1fa2", lof: "#0e7490", reranker: C.navy };
+const COLORS: Record<string, string> = { zscore: "#5f6878", iforest: C.series, autoencoder: "#7a1fa2", lof: "#0e7490", ensemble: "#b45309", reranker: C.navy };
 
 export function ExperimentsPage() {
   const { models, jobs, toast, setPage, activateModel, datasets } = useApp();

@@ -48,7 +48,7 @@ own data: it connects to the demo vendor exactly as it would to a real one.
 | Area | Screens | What you get |
 |---|---|---|
 | **Executive** (default) | Overview · Alerts · Plan · Story | three headline numbers, where problems happen, the five alerts to work first, a stock-story drawer and an investigator-hours slider, all without statistics vocabulary |
-| **Business** | 1 Data → 2 Train → 3 Act | connect a vendor over MCP (or import a CSV), let four methods compete on that vendor's own history, then alerts, a dashboard, an investigation planner, drill-downs with the SOP to follow, and triage |
+| **Business** | 1 Data → 2 Train → 3 Act | connect a vendor over MCP (or import a CSV), let five methods compete on that vendor's own history, then alerts, a dashboard, an investigation planner, drill-downs with the SOP to follow, and triage |
 | **Operations** | Schedules | sync → use or retrain the model of your choice → detect at set times; vendor tasks proposed from the SOPs wait for a person's approval |
 | **Analyst** | Models · Experiments | every metric, threshold, signal and run; model export as a Python bundle or ONNX |
 | **Assistant** | chat on every page, Assistant page, Settings | a team of AI agents that reads alerts and plans, looks up live stock in the vendor system, quotes the SOPs, sets up schedules and proposes jobs and vendor tasks for you to confirm |
@@ -145,7 +145,7 @@ and the assistant settings, and it is recreated empty on the next start. The dem
 |---|---|---|---|
 | 1 | **Overview** (Executive) | press **Run the whole pipeline** on an empty install (sync the vendor, train, detect) | ~1-2 min |
 | or 1a | **1 Data** (Analyst) | the demo vendor is already connected: press **Sync now** (120 days x 40 stores x 250 SKUs = 1.2M rows) | ~30 s |
-| 1b | **2 Train** | tick the four methods, press **Train**; the best becomes the *model in use* | ~1 min |
+| 1b | **2 Train** | tick the five methods, press **Train**; the best becomes the *model in use* | ~1 min |
 | 1c | **3 Act** | press **Run detection** | ~2 min |
 | 2 | **Act → Alerts** | open the top critical alert: reasons, money at risk, P(true), **What to do** (the SOP, escalation level, "Raise vendor task", live stock) | |
 | 2b | demo vendor **Tasks from Sentinel** (:8020) | close the task with an outcome; the next sync turns it into team feedback | |
@@ -448,9 +448,9 @@ methods beat the rule of thumb.
 **Context features** describe the day but do not drive scoring. They are used for explanations and the drill-down:
 units and £ variance, units sold, stock cover, delivery day, promotion, unit cost, day of week and category.
 
-### 2. The four detectors (`services/detectors.py`, `services/registry.py`)
+### 2. The five detectors (`services/detectors.py`, `services/registry.py`)
 
-All four are **unsupervised**: they learn what a normal day looks like and need no labels. Each is a scikit-learn
+All five are **unsupervised**: they learn what a normal day looks like and need no labels. Each is a scikit-learn
 `Pipeline` (a `pre` column step, then the `model`) with the same contract: `fit(X)` and `anomaly_score(X)`, where higher
 means more unusual.
 
@@ -460,6 +460,7 @@ means more unusual.
 | **Isolation Forest** | random trees split the data at random thresholds; unusual days are isolated in few splits | 16 signals, unscaled | 150 trees, 2,048 rows per tree | 2^(−E[path length] / c(ψ)) |
 | **Local Outlier Factor** | compares the density of a day's k-neighbourhood with its neighbours' densities (novelty mode against a reference sample of normal history) | 16 signals, standardised | k = 20, 4,000 reference rows | LOF ratio |
 | **Autoencoder** | a small neural network (scikit-learn `MLPRegressor`) squeezes each day through a bottleneck and rebuilds it | 16 signals, standardised | layers 16-4-16, ReLU, L2 1e-4, batch 512, lr 1e-3, ≤ 60 epochs, early stopping | mean squared reconstruction error |
+| **Ensemble** (Isolation Forest + LOF) | runs both; each score becomes a tail surprise, −log P(a normal training day scores at least this high), measured on 100,000 training rows, and the two are added | 16 signals (LOF standardised) | as Isolation Forest and LOF | sum of the two surprises |
 
 Every setting can be changed on the Train page. **Isolation Forest** and **LOF** fall back to built-in pure-numpy
 implementations (`np_engines.py`) when scikit-learn's compiled modules are blocked (see
@@ -587,6 +588,7 @@ a supervised **re-ranker** on top of the unsupervised detector:
 | Robust z-score rule | numpy | statistical rule | baseline, today's typical shrinkage rule |
 | Isolation Forest | scikit-learn `IsolationForest` (or built-in numpy engine) | unsupervised tree ensemble | usually the winner |
 | Local Outlier Factor | scikit-learn `LocalOutlierFactor` (or built-in numpy engine) | unsupervised density / neighbours | competitor |
+| Ensemble (Isolation Forest + LOF) | the two above, fused by tail surprise | unsupervised ensemble | usually the winner on the demo vendor |
 | Autoencoder | scikit-learn `MLPRegressor` | unsupervised neural network | competitor |
 | Feedback re-ranker | **LightGBM** `LGBMClassifier` (fallback: scikit-learn `LogisticRegression`) | supervised gradient boosting | learns from team decisions |
 | P(true) calibration | numpy (Beta prior + isotonic PAV) | probability calibration | turns scores into "8 in 10 alerts like this are real" |
@@ -766,11 +768,33 @@ against the simulator's answer key. The default demo vendor is smaller (1.2M row
   Isolation Forest finds almost all till fraud and internal theft, which never show up as one big shrinkage day.
 - After a simulated week of team reviews, the **feedback re-ranker** improves on days nobody reviewed (Triage tab).
 
+### Why average precision is about 0.4, not 0.9
+
+Measured on the demo vendor (1.2M rows, 500,000-day training sample, exam from 2026-09-09):
+
+| | Average precision |
+|---|---|
+| Random ranking (= share of exam days that are real problems) | 0.006 |
+| Rule of thumb | 0.22 |
+| Isolation Forest | 0.37 |
+| **Ensemble (Isolation Forest + LOF)** | **0.45** (67% of the top 1,000 real, 53% of incidents, 67% of value) |
+| Supervised LightGBM given the answer key (5-fold, same signals): a ceiling, not deployable | 0.76 |
+
+- **The floor is 0.006, not 0.5.** Only 0.6% of exam days are real problems, so 0.4 is about 60x random.
+- **The answer key is generous.** Every day of a multi-day incident counts, including days whose effect sits inside
+  ordinary count noise. 26% of labelled days have no signal beyond the 99.5th percentile of normal history (48% of
+  receiving errors, 37% of counting errors, 31% of external thefts). No ranking can put those first, which is why even
+  the supervised ceiling stops at 0.76.
+- **The mix is hard by design.** Counting errors (28% of labelled days) and small external thefts of 1-4 units a day
+  (27%) dominate the count; till fraud, internal theft and typing errors are caught at 100% of incidents.
+- **The money is concentrated.** AP counts days, not pounds: the ensemble's alerts cover 67% of the value lost.
+- The gap between 0.45 and 0.76 is what labels buy: the feedback re-ranker closes part of it as the team reviews alerts.
+
 | Step | Time |
 |---|---|
 | First sync of 1.2M rows over MCP (pull, snapshot, features, stats) | ~28 s |
 | Incremental sync (new day + 3 days of corrections) | ~4 s |
-| Train all four methods | ~58 s |
+| Train all four original methods | ~58 s |
 | Detect with Isolation Forest (numpy engine) | ~2 min |
 | ONNX export + validation, per model | < 1 s |
 
