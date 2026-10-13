@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ProposalCard } from "../ProposalCard";
 import { fmtCost, fmtTokens } from "./UsagePanel";
 import { ThinkingTrail, agentLabel } from "./ThinkingTrail";
 import { useAssistant } from "../../assistant/AssistantContext";
@@ -76,47 +77,9 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
-function ProposalCard({ p }: { p: Proposal }) {
+function ChatProposal({ p }: { p: Proposal }) {
   const { confirm, cancel } = useAssistant();
-  const { jobs } = useApp();
-  const job = p.job_id ? jobs[p.job_id] : null;
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className={`proposal-card status-${p.status}`}>
-      <div className="row between">
-        <b>{p.title}</b>
-        <span className={`chip ${p.status === "pending" ? "primary" : p.status === "confirmed" ? "status-done" : p.status === "failed" ? "status-failed" : "neutral"}`}>{p.status === "pending" ? "needs your OK" : p.status}</span>
-      </div>
-      <div className="muted small" style={{ margin: "6px 0" }}>
-        {p.summary}
-        {p.estimate_seconds ? ` Estimated ${fmtDuration(p.estimate_seconds)}.` : ""}
-      </div>
-      {p.warnings.map((w, i) => (
-        <div key={i} className="alert warn small" style={{ marginBottom: 6 }}>
-          {w}
-        </div>
-      ))}
-      {p.error ? <div className="alert error small">{p.error}</div> : null}
-      {p.status === "pending" ? (
-        <div className="row">
-          <button className="btn primary sm" disabled={busy} onClick={async () => { setBusy(true); await confirm(p.proposal_id); setBusy(false); }}>
-            {busy ? <Spinner /> : null} Confirm and run
-          </button>
-          <button className="btn sm" disabled={busy} onClick={() => cancel(p.proposal_id)}>
-            Not now
-          </button>
-        </div>
-      ) : null}
-      {job ? (
-        <div style={{ marginTop: 8 }}>
-          <JobProgress job={job} compact />
-        </div>
-      ) : null}
-      <TechnicalDetails title="Parameters">
-        <pre className="code-block" style={{ margin: 0 }}>{JSON.stringify(p.params, null, 1)}</pre>
-      </TechnicalDetails>
-    </div>
-  );
+  return <ProposalCard p={p} onConfirm={confirm} onCancel={cancel} />;
 }
 
 function Bubble({ m }: { m: ChatMessage }) {
@@ -133,7 +96,7 @@ function Bubble({ m }: { m: ChatMessage }) {
       {m.role === "assistant" && m.author && m.author !== "sentinel_assistant" && m.text ? <div className="author">{agentLabel(m.author)}</div> : null}
       {m.text ? <div className="bubble">{m.role === "assistant" ? <Markdown text={m.text} /> : m.text}</div> : null}
       {m.proposals.map((p) => (
-        <ProposalCard key={p.proposal_id} p={p} />
+        <ChatProposal key={p.proposal_id} p={p} />
       ))}
       {m.error ? <div className="alert error small" style={{ marginTop: 6 }}>{m.error}</div> : null}
       {m.role === "assistant" && m.usage && !m.pending ? (

@@ -13,16 +13,27 @@ TRIAGE_DIR = DATA_DIR / "triage"
 EXPORTS_DIR = DATA_DIR / "exports"
 REGISTRY_PATH = DATA_DIR / "registry.json"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
+SOPS_DIR = ROOT / "docs" / "sops"
+
+# ---- vendor connectors (MCP), syncs, schedules, vendor tasks
+CONNECTORS_PATH = DATA_DIR / "connectors.json"
+CONNECTORS_DIR = DATA_DIR / "connectors"  # per-connector mirror of the vendor's data (only new days are pulled)
+SCHEDULES_PATH = DATA_DIR / "schedules.json"
+SCHEDULE_RUNS_PATH = DATA_DIR / "schedule_runs.jsonl"
+VENDOR_TASKS_PATH = DATA_DIR / "vendor_tasks.jsonl"
+DEFAULT_CONNECTOR_URL = os.environ.get("SENTINEL_DEFAULT_CONNECTOR_URL") or None  # registered at startup when no connector exists
+SYNC_PAGE_SIZE = 50_000
+SYNC_WINDOW_DAYS = 120  # each snapshot holds the last N days
+SYNC_RESYNC_DAYS = 3  # re-pull the last N days on every sync (late corrections)
+CONNECTOR_RETENTION = 3  # snapshots kept per connector
+MCP_CALL_TIMEOUT_S = 120
+SCHEDULER_TICK_S = 30
+SCHEDULER_PROPOSAL_TTL_S = 72 * 3600
 
 # ---- scale / limits (rows = stores x SKUs x days)
 MAX_UPLOAD_MB = 2048
-MIN_ROWS = int(os.environ.get("SENTINEL_MIN_ROWS", 1_000_000))  # env var lowers it for quick dev runs only
 MAX_ROWS = 10_000_000
-DEFAULT_STORES = 80
-DEFAULT_SKUS = 500
-DEFAULT_DAYS = 125
-GEN_BLOCK_STORES = 10
-SYN_START = "2026-06-01"
+GEN_BLOCK_STORES = 10  # features are engineered in blocks of this many stores
 CSV_WRITE_CHUNK_ROWS = 500_000
 CSV_READ_CHUNK_ROWS = 1_000_000
 UPLOAD_SAMPLE_ROWS = 50_000
@@ -83,7 +94,7 @@ ASSISTANT_USAGE_CAP = 20_000
 
 # ---- timing rules of thumb (seconds), measured on a 6-core laptop; UI estimates only
 TIMING = {
-    "generate_s_per_1m": 6.0,  # measured: 5M rows in 28.5 s
+    "sync_s_per_1m": 25.0,  # first full pull over MCP on localhost, incl. features
     "upload_s_per_mb": 0.25,
     "export_s_per_1m": 4.5,  # measured: 5M rows in 21.5 s
     "detect_overhead_s_per_1m": 1.5,
@@ -114,5 +125,5 @@ LP_FLAG_TYPES = ["theft", "counting_error", "process_issue", "data_error"]
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, DATASETS_DIR, MODELS_DIR, RUNS_DIR, TRIAGE_DIR, EXPORTS_DIR):
+    for d in (DATA_DIR, DATASETS_DIR, MODELS_DIR, RUNS_DIR, TRIAGE_DIR, EXPORTS_DIR, CONNECTORS_DIR):
         d.mkdir(parents=True, exist_ok=True)

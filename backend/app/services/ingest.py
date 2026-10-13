@@ -1,4 +1,6 @@
-"""Import real inventory data (CSV) or an exported Inventory Sentinel bundle (ZIP) into the column store."""
+"""Import real inventory data (CSV) or an exported Inventory Sentinel bundle (ZIP) into the column store.
+
+`build_dataset` is the shared back half: connector syncs hand it arrays directly (no CSV round-trip)."""
 from __future__ import annotations
 
 import gc
@@ -15,7 +17,8 @@ import pandas as pd
 
 from app import config
 from app.schemas import DatasetMeta, Detection
-from app.services import colstore, datasets, storage, synth
+from app.services import colstore, datasets, storage
+from app.services.schema_spec import DAILY_SPECS, LP_COLUMNS, MEASURES, TRUTH_SPECS
 
 ALIASES: dict[str, list[str]] = {
     "date": ["date", "count_date", "business_date", "txn_date", "day", "trading_date", "stock_date"],
@@ -41,7 +44,6 @@ ALIASES: dict[str, list[str]] = {
     "unit_cost": ["unit_cost", "cost", "cost_price", "unit_cost_gbp"],
 }
 REQUIRED = ["date", "store_id", "sku_id", "counted_closing"]
-MEASURES = [c for c in synth.DAILY_SPECS if c not in ("date_idx", "store_code", "sku_code")]
 
 
 def normalize(name: str) -> str:
@@ -163,10 +165,57 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
     store = np.concatenate(parts["store"])
     sku = np.concatenate(parts["sku"])
     day = np.concatenate(parts["day"])
+    meas_raw = {f: np.concatenate(parts[f]) for f in MEASURES if f in cmap}
+    read_csv = lambda key, dt: pd.read_csv(files[key], dtype=dt) if files[key] is not None else None  # noqa: E731
+    params: dict[str, Any] = {"source_file": daily_path.name}
+    if files["metadata"] is not None:
+        try:
+            md = json.loads(Path(files["metadata"]).read_text(encoding="utf-8"))
+            params["imported_from"] = md.get("name")
+            name = name or md.get("name")
+        except ValueError:
+            pass
+    det = Detection(column_map=cmap, missing_optional=missing, source_file=daily_path.name)
+    return build_dataset(
+        ds_id, store_ids=list(store_codes), sku_ids=list(sku_codes), store=store, sku=sku, day=day, meas=meas_raw,
+        stores_in=read_csv("stores", {"store_id": str}), skus_in=read_csv("skus", {"sku_id": str}),
+        lp_in=read_csv("lp_flags", {"store_id": str, "sku_id": str}), answer_key_in=read_csv("answer_key", {"store_id": str, "sku_id": str}),
+        sku_meta=sku_meta, name=name or f"Imported {daily_path.stem}", kind="upload", params=params, detection=det, warnings=warnings, on_progress=on_progress,
+    )  # raw files stay in raw/ so the column mapping can be changed later
+
+
+def build_dataset(
+    ds_id: str,
+    *,
+    store_ids: list[str],
+    sku_ids: list[str],
+    store: np.ndarray,
+    sku: np.ndarray,
+    day: np.ndarray,
+    meas: dict[str, np.ndarray],
+    stores_in: pd.DataFrame | None,
+    skus_in: pd.DataFrame | None,
+    lp_in: pd.DataFrame | None,
+    answer_key_in: pd.DataFrame | None,
+    sku_meta: dict[str, tuple[str, float]],
+    name: str,
+    kind: str,
+    params: dict[str, Any],
+    detection: Detection | None,
+    warnings: list[str],
+    on_progress: Callable[[float, str], None],
+) -> DatasetMeta:
+    """Rows as codes into `store_ids` / `sku_ids` (-1 = missing) and days since 1970-01-01 -> a finalized dataset.
+
+    `stores_in` / `skus_in` / `lp_in` / `answer_key_in` use string ids and ISO dates, like the CSVs of an export."""
+    ds_dir = storage.dataset_dir(ds_id)
+    ds_dir.mkdir(parents=True, exist_ok=True)
+    store_codes = {s: i for i, s in enumerate(store_ids)}
+    sku_codes = {s: i for i, s in enumerate(sku_ids)}
     ok = (store >= 0) & (sku >= 0) & (day >= 0)
     if not ok.all():
         warnings.append(f"Dropped {int((~ok).sum()):,} rows with a missing store, SKU or unparseable date.")
-    meas = {f: np.concatenate(parts[f])[ok] for f in MEASURES if f in cmap}
+    meas = {f: v[ok] for f, v in meas.items()}
     store, sku, day = store[ok], sku[ok], day[ok]
     if len(day) == 0:
         raise ValueError("No usable rows: every row is missing a store, a SKU or a date that could be read. Check the date format and the column map.")
@@ -205,21 +254,19 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
     dates = (np.arange(d0, int(day.max()) + 1).astype("datetime64[D]")).astype(str)
     cols = {"date_idx": (day - d0).astype(np.int16), "store_code": store.astype(np.int16), "sku_code": sku.astype(np.int16)}
     for f, v in meas.items():
-        cols[f] = v.astype(synth.DAILY_SPECS[f])
+        cols[f] = v.astype(DAILY_SPECS[f])
     on_progress(0.5, "Writing the column store")
     colstore.write_columns(ds_dir / "daily", cols)
     # ---- dimension tables
     stores = pd.DataFrame({"store_id": st_ids})
-    if files["stores"] is not None:
-        s_in = pd.read_csv(files["stores"], dtype={"store_id": str})
-        stores = stores.merge(s_in, on="store_id", how="left")
+    if stores_in is not None:
+        stores = stores.merge(stores_in.drop_duplicates("store_id"), on="store_id", how="left")
     stores["store_name"] = stores.get("store_name", stores["store_id"]).fillna(stores["store_id"]) if "store_name" in stores else stores["store_id"]
     for c, default in (("region", "Unknown"), ("warehouse_team", "All stores"), ("format", "unknown")):
         stores[c] = stores[c].fillna(default) if c in stores else default
     skus = pd.DataFrame({"sku_id": sk_ids})
-    if files["skus"] is not None:
-        k_in = pd.read_csv(files["skus"], dtype={"sku_id": str})
-        skus = skus.merge(k_in, on="sku_id", how="left")
+    if skus_in is not None:
+        skus = skus.merge(skus_in.drop_duplicates("sku_id"), on="sku_id", how="left")
     elif sku_meta:
         skus["category"] = skus["sku_id"].map(lambda s: sku_meta.get(s, ("unknown", 1.0))[0])
         skus["unit_cost"] = skus["sku_id"].map(lambda s: sku_meta.get(s, ("unknown", 1.0))[1])
@@ -237,9 +284,9 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
     st_index = {s: i for i, s in enumerate(st_ids)}
     sk_index = {s: i for i, s in enumerate(sk_ids)}
     # ---- loss-prevention flags and (for our own exports) the answer key
-    lp = pd.DataFrame(columns=["flag_id", "date", "store_id", "sku_id", "date_idx", "store_code", "sku_code", "flag_type", "source", "confirmed", "loss_value_gbp"])
-    if files["lp_flags"] is not None:
-        f_in = pd.read_csv(files["lp_flags"], dtype={"store_id": str, "sku_id": str})
+    lp = pd.DataFrame(columns=LP_COLUMNS)
+    if lp_in is not None and len(lp_in):
+        f_in = lp_in.astype({"store_id": str, "sku_id": str})
         f_in = f_in[f_in["store_id"].isin(st_index) & f_in["sku_id"].isin(sk_index)].copy()
         f_in["store_code"] = f_in["store_id"].map(st_index)
         f_in["sku_code"] = f_in["sku_id"].map(sk_index)
@@ -251,34 +298,24 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
         if "flag_id" not in f_in:
             f_in["flag_id"] = [f"LP{i + 1:05d}" for i in range(len(f_in))]
         lp = f_in[list(lp.columns)]
-    if files["answer_key"] is not None:
+    if answer_key_in is not None:
         on_progress(0.55, "Attaching the answer key")
-        ak = pd.read_csv(files["answer_key"], dtype={"store_id": str, "sku_id": str})
+        ak = answer_key_in.astype({"store_id": str, "sku_id": str})
         ak = ak[ak["store_id"].isin(st_index) & ak["sku_id"].isin(sk_index)]
         akey = (ak["store_id"].map(st_index).to_numpy() * 1_000_000 + ak["sku_id"].map(sk_index).to_numpy()) * 100_000 + (pd.to_datetime(ak["date"]).to_numpy().astype("datetime64[D]").astype(np.int64) - d0)
         rkey = (store * 1_000_000 + sku) * 100_000 + (day - d0)
         pos = np.searchsorted(rkey, akey)
         good = (pos < len(rkey)) & (rkey[np.minimum(pos, len(rkey) - 1)] == akey)
         tcode = {n: i for i, n in enumerate(config.ANOMALY_TYPES)}
-        truth = {k: np.zeros(len(rkey), dtype=v) for k, v in synth.TRUTH_SPECS.items()}
+        truth = {k: np.zeros(len(rkey), dtype=v) for k, v in TRUTH_SPECS.items()}
         truth["truth_type"][pos[good]] = ak["truth_type"].map(lambda t: tcode.get(str(t), 0)).to_numpy()[good]
         truth["truth_incident"][pos[good]] = ak["truth_incident"].to_numpy()[good]
         truth["truth_loss_units"][pos[good]] = ak["truth_loss_units"].to_numpy()[good]
         colstore.write_columns(ds_dir / "truth", truth)
-    params: dict[str, Any] = {"source_file": daily_path.name}
-    if files["metadata"] is not None:
-        try:
-            md = json.loads(Path(files["metadata"]).read_text(encoding="utf-8"))
-            params["imported_from"] = md.get("name")
-            name = name or md.get("name")
-        except ValueError:
-            pass
-    det = Detection(column_map=cmap, missing_optional=missing, source_file=daily_path.name)
-    meta = datasets.finalize(
-        ds_id, name or f"Imported {daily_path.stem}", "upload", stores, skus, dates, lp, params, det, warnings,
+    return datasets.finalize(
+        ds_id, name, kind, stores, skus, dates, lp, params, detection, warnings,
         on_progress=lambda f, m: on_progress(0.55 + 0.42 * f, m),
     )
-    return meta  # raw files stay in raw/ so the column mapping can be changed later
 
 
 def as_text(buf: bytes) -> io.StringIO:

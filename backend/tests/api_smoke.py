@@ -1,9 +1,10 @@
-"""End-to-end API check against a running server.
+"""End-to-end API check against a running server and a vendor connector.
 
-    python backend/tests/api_smoke.py [--base http://127.0.0.1:8000] [--small] [--keep]
+    python backend/tests/api_smoke.py [--base http://127.0.0.1:8000] [--vendor http://127.0.0.1:8020/mcp/] [--vendor-token T] [--keep]
 
---small uses 10 stores x 100 SKUs x 90 days (start the server with SENTINEL_MIN_ROWS=50000); the default is the full
-80 x 500 x 125 = 5M-row showcase size and prints a timing table. --keep leaves the data in place.
+Registers the vendor (the demo back-office by default) as a connector unless it already is, syncs it, then trains,
+detects, plans, exercises SOPs, vendor tasks and schedules, exports and re-imports. The data size is whatever the vendor
+holds (start vendor_mock with VENDOR_MOCK_STORES / _SKUS / _HISTORY_DAYS for a quick run). --keep leaves the data in place.
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ import zipfile
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--base", default="http://127.0.0.1:8000")
-ap.add_argument("--small", action="store_true")
+ap.add_argument("--vendor", default="http://127.0.0.1:8020/mcp/")
+ap.add_argument("--vendor-token", default=None)
 ap.add_argument("--keep", action="store_true")
 args = ap.parse_args()
 B = args.base
@@ -75,25 +77,36 @@ def upload(path: str, filename: str, fields: dict[str, str]) -> tuple[int, dict]
         return r.status, json.loads(r.read())
 
 
-size = (10, 100, 90) if args.small else (80, 500, 125)
 s, h = call("GET", "/api/health")
 check("health", s == 200 and h["status"] == "ok", h)
 print("     engines:", h["engines"], "| issues:", len(h["env_issues"]))
 s, cfg = call("GET", "/api/config")
-check("config", s == 200 and cfg["min_rows"] <= size[0] * size[1] * size[2], cfg)
+check("config", s == 200 and cfg["max_rows"] > 0, cfg)
 
-# ---------------------------------------------------------------- data
-s, job = call("POST", "/api/datasets/generate", {"n_stores": size[0], "n_skus": size[1], "n_days": size[2], "seed": 7})
-check("generate accepted", s == 202, job)
-ds_id = wait_job(job, f"generate {size[0] * size[1] * size[2]:,} rows")["dataset_id"]
+# ---------------------------------------------------------------- data: vendor connector over MCP
+s, conns = call("GET", "/api/connectors")
+conn = next((c for c in conns if c["url"].rstrip("/") == args.vendor.rstrip("/")), None) if s == 200 else None
+if conn is None:
+    s, conn = call("POST", "/api/connectors", {"name": "API smoke vendor", "url": args.vendor, "token": args.vendor_token})
+    check("connector created", s == 201 and conn["capabilities"], conn)
+s, t = call("POST", f"/api/connectors/{conn['id']}/test")
+check("connector test", s == 200 and t["ok"] and t["capabilities"]["status"] == "ready", t)
+check("token never returned", not conn["token"] or "•" in conn["token"] or conn["token"].startswith("*"), conn["token"])
+s, job = call("POST", f"/api/connectors/{conn['id']}/sync")
+check("sync accepted", s == 202, job)
+ds_id = wait_job(job, "sync vendor")["dataset_id"]
 s, meta = call("GET", f"/api/datasets/{ds_id}")
-check("dataset meta", s == 200 and meta["has_truth"] and meta["n_incidents"] > 0 and meta["n_lp_flags"] > 0, meta)
+check("snapshot meta", s == 200 and meta["kind"] == "connector" and meta["n_lp_flags"] > 0, meta)
+size = (meta["n_stores"], meta["n_skus"], meta["n_days"])
+s, pos = call("GET", f"/api/connectors/{conn['id']}/lookup?store_id=S001&sku_id=K00001&days=3")
+check("live stock lookup", s == 200 and pos["on_hand"] is not None, pos)
 print(f"     {meta['n_rows']:,} rows, {meta['n_incidents']:,} injected incidents, {meta['n_lp_flags']} LP flags, {meta['size_bytes'] / 1e6:.0f} MB")
 for t in ("daily", "stores", "skus", "lp_flags"):
     s, pv = call("GET", f"/api/datasets/{ds_id}/preview?table={t}&rows=5")
     check(f"preview {t}", s == 200 and len(pv["rows"]) > 0, pv)
-s, pv = call("GET", f"/api/datasets/{ds_id}/preview?table=daily&rows=5&answer_key=true")
-check("preview with answer key", "truth_type" in pv["columns"], pv["columns"])
+if meta["has_truth"]:
+    s, pv = call("GET", f"/api/datasets/{ds_id}/preview?table=daily&rows=5&answer_key=true")
+    check("preview with the demo answer key", "truth_type" in pv["columns"], pv["columns"])
 
 # ---------------------------------------------------------------- train
 s, av = call("GET", "/api/models/available")
@@ -128,12 +141,45 @@ check("alerts filtered", s == 200 and page["total"] > 0 and all(a["severity"] in
 a0 = page["alerts"][0]
 s, a = call("GET", f"/api/runs/{run_id}/alerts/{a0['alert_id']}?answer_key=true")
 check("alert detail with reasons", s == 200 and a["reasons"] and "truth_type" in a, a)
+s, asop = call("GET", f"/api/runs/{run_id}/alerts/{a0['alert_id']}/sop")
+check("alert SOP", s == 200 and asop["sop"]["id"] and asop["steps"] and asop["escalation"], asop)
+step = next((x for x in asop["steps"] if x["vendor_task"]), None)
+if step and asop["can_raise_tasks"]:
+    body = {"tasks": [{"run_id": run_id, "alert_id": a0["alert_id"], "type": step["vendor_task"]["type"], "sop_id": asop["sop"]["id"], "sop_step": step["id"]}]}
+    s, raised = call("POST", "/api/vendor-tasks", body)
+    check("vendor task raised", s == 200 and (raised["created"] or raised["existing"]), raised)
+    s, again = call("POST", "/api/vendor-tasks", body)
+    check("vendor task idempotent", s == 200 and not again["created"] and again["existing"], again)
+s, sops = call("GET", "/api/sops")
+check("SOP list", s == 200 and any(x["id"] == "missing-inventory-response" for x in sops), sops)
 s, ser = call("GET", f"/api/runs/{run_id}/series?store_id={a0['store_id']}&sku_id={a0['sku_id']}&answer_key=true")
 check("series drill-down", s == 200 and len(ser["points"]) == size[2] and ser["alerts"] and ser["flagged_reasons"], {k: ser[k] for k in ("store_id", "sku_id")} if s == 200 else ser)
 s, found = call("GET", f"/api/runs/{run_id}/search?q={a0['store_id']}")
 check("series search", s == 200 and found, found)
 s, csv = call("GET", f"/api/runs/{run_id}/alerts.csv", raw=True)
 check("alerts csv", s == 200 and csv.count(b"\n") > 1, csv[:200])
+
+# ---------------------------------------------------------------- schedules
+sched_body = {"name": "API smoke", "enabled": False, "connector_id": conn["id"], "timezone": "Europe/London",
+              "frequency": {"kind": "weekly", "every_hours": 24, "at": "05:30", "days": [0, 3]},
+              "pipeline": {"sync": False, "model_policy": "active", "model_id": None,
+                           "train": {"models": [{"key": "iforest", "params": {}}], "train_sample_size": 30000, "alert_rate": 0.008, "activate_retrained": False, "min_interval_days": 0},
+                           "auto_tasks": {"enabled": True, "severities": ["critical"], "min_value_gbp": 0, "max_tasks": 2}},
+              "catch_up": "once"}
+s, pv = call("POST", "/api/schedules/preview", sched_body)
+check("schedule preview", s == 200 and len(pv["next_runs"]) == 3 and "05:30" in pv["summary"], pv)
+s, sched = call("POST", "/api/schedules", sched_body)
+check("schedule created", s == 201 and sched["next_run_at"], sched)
+s, out = call("POST", f"/api/schedules/{sched['id']}/run")
+check("schedule run now", s == 200 and out["job"], out)
+wait_job(out["job"], "scheduled pipeline")
+s, sruns = call("GET", f"/api/schedules/{sched['id']}/runs")
+check("schedule history", s == 200 and sruns and sruns[0]["status"] == "done" and sruns[0]["detection_run_id"], sruns[:1])
+s, st = call("GET", "/api/schedules/status")
+check("scheduler status", s == 200 and "running" in st, st)
+bad = dict(sched_body, timezone="Mars/Olympus")
+s, err = call("POST", "/api/schedules", bad)
+check("bad timezone rejected", s == 400, err)
 
 # ---------------------------------------------------------------- planner
 s, plan = call("POST", "/api/plan", {"run_id": run_id, "hours": 60})
@@ -204,6 +250,7 @@ for extra in ([], ["--onnx"]):
 s, ov = call("GET", "/api/overview")
 check("overview", s == 200 and ov["latest_run"] and ov["top_alerts"], ov)
 if not args.keep:
+    call("DELETE", f"/api/schedules/{sched['id']}")
     for d in (ds2, ds_id):
         s, _ = call("DELETE", f"/api/datasets/{d}")
         check(f"delete dataset {d}", s == 200, _)

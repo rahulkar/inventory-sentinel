@@ -17,7 +17,7 @@ from app.assistant import plain_language as pl
 from app.assistant import proposals
 from app.assistant.context_pack import UiState, build_context_pack
 from app.schemas import PlanRequest
-from app.services import detection, jobs, planner, registry, storage, training, triage
+from app.services import connectors, detection, jobs, planner, registry, scheduler, sops, storage, training, triage, vendor_tasks
 
 ROW_CAP = config.ASSISTANT_TOOL_ROW_CAP
 
@@ -68,12 +68,13 @@ def _run_note(run_id: str) -> dict[str, Any]:
 
 # ---------------------------------------------------------------- datasets
 def list_datasets() -> dict[str, Any]:
-    """List the inventory datasets (newest first) with size, date range, whether a synthetic answer key exists and loss-prevention flag counts."""
+    """List the inventory datasets (newest first): vendor snapshots (kind "connector", one per sync) and manual imports, with size, date range, loss-prevention flag counts and whether a demo vendor answer key came with them."""
     ds = storage.list_datasets()[:ROW_CAP]
     return _ok(count=len(ds), datasets=[{
         "dataset_id": d.id, "name": d.name, "kind": d.kind, "rows": d.n_rows, "stores": d.n_stores, "skus": d.n_skus, "days": d.n_days,
         "date_start": d.date_start, "date_end": d.date_end, "evaluation_window_from": d.test_from_date, "answer_key": d.has_truth,
         "injected_incidents": d.n_incidents, "lp_flags": d.n_lp_flags, "size_mb": round(d.size_bytes / 1e6, 1), "created_at": d.created_at,
+        "connector": (d.params or {}).get("connector_name"), "synced_through": (d.params or {}).get("synced_through"),
     } for d in ds])
 
 
@@ -85,7 +86,7 @@ def describe_dataset(dataset_id: str | None = None) -> dict[str, Any]:
     """
     d = _dataset(dataset_id)
     if d is None:
-        return _err("No dataset yet. Generate one on the Data page (or propose a generate job).")
+        return _err("No dataset yet. Sync a vendor connector (propose a sync job) or import a CSV on the Data page.")
     st = d.stats
     return _ok(
         dataset_id=d.id, name=d.name, kind=d.kind, rows=d.n_rows, stores=d.n_stores, skus=d.n_skus, days=d.n_days, dates=f"{d.date_start} to {d.date_end}",
@@ -95,8 +96,17 @@ def describe_dataset(dataset_id: str | None = None) -> dict[str, Any]:
         stats={k: v.model_dump() for k, v in (st.numeric.items() if st else [])},
         rows_by_category=st.rows_by_category if st else {}, units_sold=st.units_sold if st else None,
         net_stock_gap_units=st.net_variance_units if st else None, net_stock_gap_value_gbp=st.net_variance_value_gbp if st else None,
-        import_mapping=d.detection.model_dump() if d.detection else None, warnings=d.warnings, generator_params=d.params if d.kind == "synthetic" else None,
+        import_mapping=d.detection.model_dump() if d.detection else None, warnings=d.warnings, source=_source(d),
     )
+
+
+def _source(d: Any) -> dict[str, Any]:
+    p = d.params or {}
+    if d.kind == "connector":
+        return {"type": "vendor connector", "connector_id": p.get("connector_id"), "connector": p.get("connector_name"), "vendor": p.get("vendor"), "window": f"{p.get('window_start')} to {p.get('synced_through')}", "synced_at": p.get("synced_at"), "answer_key": "demo vendor answer key" if d.has_truth else None}
+    if d.kind == "upload":
+        return {"type": "manual import", "file": p.get("source_file")}
+    return {"type": "legacy synthetic dataset (made before connectors existed)"}
 
 
 def preview_rows(dataset_id: str | None = None, table: str = "daily", rows: int = 5) -> dict[str, Any]:
@@ -412,13 +422,19 @@ def triage_summary(dataset_id: str | None = None, run_id: str | None = None) -> 
 
 # ---------------------------------------------------------------- jobs, knowledge, state
 def propose_job(kind: str, params: dict[str, Any] | None = None, session_id: str = "mcp") -> dict[str, Any]:
-    """Propose a job for the user to confirm; nothing runs until they press Confirm in the chat.
+    """Propose an action for the user to confirm; nothing runs until they press Confirm.
 
     Args:
-        kind: One of "generate" (n_stores, n_skus, n_days, seed, anomaly_multiplier, lp_coverage), "configure" (dataset_id, column_map),
-            "train" (dataset_id, models: list of method keys zscore/iforest/autoencoder/lof, quick: true/false, alert_rate), "detect" (dataset_id, model_id),
-            "retrain_feedback" (model_id, alpha), "export_dataset" (dataset_id), "export_onnx" (model_id), "activate_model" (model_id).
-        params: Parameters for that kind; omitted ones get sensible defaults (latest dataset, model in use, all four methods).
+        kind: One of
+            "sync" (connector_id, full: true/false) - pull new days from a vendor and build a fresh snapshot;
+            "train" (dataset_id, models: list of zscore/iforest/autoencoder/lof, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
+            "retrain_feedback" (model_id, alpha); "activate_model" (model_id); "configure" (dataset_id, column_map) for imported CSVs;
+            "export_dataset" (dataset_id); "export_onnx" (model_id);
+            "create_schedule" (name, connector_id, at "HH:MM", days ["mon",...] or every_hours, timezone, model_policy active/fixed/retrain,
+            model_id, models [algorithm keys -> retrain], activate_retrained, auto_tasks true/false, severities, min_value_gbp, max_tasks);
+            "update_schedule" (schedule_id plus any create_schedule field); "run_schedule" (schedule_id);
+            "vendor_task" (run_id, tasks: [{alert_id, type?, priority?, note?, sop_id?, sop_step?}]) - raise tasks in the vendor's system.
+        params: Parameters for that kind; omitted ones get sensible defaults (latest dataset, model in use, the only connector, all four methods).
         session_id: Conversation id (filled in automatically in the app).
     """
     try:
@@ -506,8 +522,159 @@ def usage_summary(session_id: str | None = None) -> dict[str, Any]:
                note="Costs are estimates from token counts and the price list named in 'pricing'; 'unpriced_calls' had no known price.")
 
 
+# ---------------------------------------------------------------- vendor connectors, schedules, vendor tasks, SOPs
+def _conn_row(c: Any) -> dict[str, Any]:
+    caps = c.capabilities or {}
+    last = c.last_sync
+    return {
+        "connector_id": c.id, "name": c.name, "vendor": (caps.get("vendor") or {}).get("name"), "enabled": c.enabled, "url": c.url,
+        "vendor_status": caps.get("status"), "vendor_data_through": (caps.get("data_range") or {}).get("last_date"),
+        "last_sync": {"at": last.at, "status": last.status, "synced_through": last.synced_through, "rows": last.rows, "error": last.error, "warnings": last.warnings[:3]} if last else None,
+        "window_days": c.window_days, "snapshots_kept": c.retention, "answer_key": "demo vendor only" if (caps.get("features") or {}).get("answer_key") else "none",
+        "task_types": caps.get("task_types") or [], "open_vendor_tasks": vendor_tasks.open_count(c.id), "backoffice_url": caps.get("backoffice_url"),
+    }
+
+
+def list_connectors() -> dict[str, Any]:
+    """The vendor systems Sentinel reads inventory from over MCP (and can send approved tasks to): status, last sync, data range and open tasks. Tokens are never shown."""
+    items = connectors.list_all()
+    if not items:
+        return _ok(count=0, connectors=[], hint="No vendor connector yet. Add one on the Data page (MCP URL + token).")
+    return _ok(count=len(items), connectors=[_conn_row(c) for c in items])
+
+
+def connector_status(connector_id: str | None = None, test: bool = False) -> dict[str, Any]:
+    """Health of one vendor connector: last sync result and warnings (e.g. a stale feed), its snapshots, and optionally a live connection test.
+
+    Args:
+        connector_id: Connector id (conn_...); defaults to the only connector.
+        test: Also call the vendor now to check it answers (takes a second).
+    """
+    try:
+        c = connectors.get(connector_id)
+    except LookupError as exc:
+        return _err(str(exc))
+    out = _conn_row(c)
+    out["snapshots"] = [{"dataset_id": d.id, "dates": f"{d.date_start} to {d.date_end}", "rows": d.n_rows, "created_at": d.created_at} for d in sorted(connectors.connector_datasets(c.id), key=lambda d: d.created_at, reverse=True)]
+    if test:
+        t = connectors.test(c)
+        out["test"] = {"ok": t.ok, "error": t.error, "seconds": t.seconds}
+    if c.last_sync and c.last_sync.status == "failed":
+        out["sop"] = "data-feed-failure"
+    return _ok(**_jsonable(out))
+
+
+def vendor_lookup(store_id: str, sku_id: str, connector_id: str | None = None, days: int = 7) -> dict[str, Any]:
+    """LIVE stock position of one SKU in one store, read from the vendor's system right now (not from a snapshot): on-hand count and recent movements.
+
+    Args:
+        store_id: Store id, e.g. "S003" (defaults to the store open in the drill-down).
+        sku_id: SKU id, e.g. "K00012" (defaults to the SKU open in the drill-down).
+        connector_id: Connector id; defaults to the only connector.
+        days: Days of movements to show (max 14).
+    """
+    try:
+        pos = connectors.stock_position(connector_id, store_id, sku_id, max(1, min(int(days), 14)))
+    except (LookupError, connectors.ConnectorError) as exc:
+        return _err(str(exc))
+    return _ok(live=True, note=f"Live from the vendor system, as of business date {pos.get('as_of')}.", **_jsonable(pos))
+
+
+def list_vendor_tasks(connector_id: str | None = None, status: str | None = None, store_id: str | None = None, alert_id: str | None = None, run_id: str | None = None, limit: int = 10) -> dict[str, Any]:
+    """Tasks Sentinel raised in vendor systems (recounts, investigations, audits) and their status and outcome as last read back.
+
+    Args:
+        connector_id: Limit to one connector.
+        status: "open" (not yet done or rejected), "done", "rejected", "acknowledged" or "in_progress".
+        store_id: Limit to one store.
+        alert_id: Tasks for one alert (needs run_id, or the run selected in the app).
+        run_id: Detection run of that alert.
+        limit: Max rows (max 20).
+    """
+    key = None
+    if alert_id:
+        rid = _run_id(run_id)
+        if not rid:
+            return _err("Name the run the alert belongs to.")
+        try:
+            key = detection.get_alert(rid, alert_id).alert_key
+        except LookupError as exc:
+            return _err(str(exc))
+    items = vendor_tasks.list_tasks(connector_id=connector_id, status=status, store_id=store_id, alert_key=key, limit=max(1, min(int(limit), ROW_CAP)))
+    return _ok(count=len(items), tasks=[t.model_dump(exclude={"alert", "feedback_recorded"}) for t in items])
+
+
+def list_schedules() -> dict[str, Any]:
+    """Scheduled pipelines (sync a vendor, pick or retrain a model, detect, propose vendor tasks): when each runs next and how its last run went."""
+    items = scheduler.list_all()
+    st = scheduler.status()
+    pending = proposals.list_pending(source="scheduler")
+    return _ok(engine_running=st.running, count=len(items), schedules=[{
+        "schedule_id": s.id, "name": s.name, "enabled": s.enabled, "description": scheduler.describe(s), "next_run_at_utc": s.next_run_at,
+        "model_policy": s.pipeline.model_policy, "model_id": s.pipeline.model_id, "algorithms": [m.key for m in s.pipeline.train.models] if s.pipeline.model_policy == "retrain" else None,
+        "auto_tasks": s.pipeline.auto_tasks.model_dump() if s.pipeline.auto_tasks.enabled else False, "last_run": s.last_run,
+    } for s in items], approvals_waiting=[{"proposal_id": p.proposal_id, "title": p.title, "created_at": p.created_at} for p in pending[:5]])
+
+
+def schedule_history(schedule_id: str | None = None, limit: int = 5) -> dict[str, Any]:
+    """Recent scheduled runs: status, new alerts found, model used, errors (with the SOP to follow when a run failed).
+
+    Args:
+        schedule_id: Limit to one schedule (sch_...).
+        limit: Max runs (max 20).
+    """
+    runs = scheduler.list_runs(schedule_id, limit=max(1, min(int(limit), ROW_CAP)))
+    return _ok(count=len(runs), runs=[r.model_dump() for r in runs])
+
+
+def get_sop(sop_id: str | None = None, alert_id: str | None = None, run_id: str | None = None, likely_type: str | None = None) -> dict[str, Any]:
+    """The standard operating procedure to follow: for an alert (with its escalation level, filled-in steps and tasks already raised), for an alert type, or by SOP id.
+
+    Args:
+        sop_id: SOP id, e.g. "missing-inventory-response", "theft-external", "data-feed-failure", "false-positive-handling".
+        alert_id: An alert (A000123); uses run_id or the run selected in the app.
+        run_id: Detection run of the alert.
+        likely_type: An alert type (theft_external, theft_internal, scan_fraud, counting_error, receiving_error, data_entry_error, velocity_shift, unclear).
+    """
+    try:
+        if alert_id:
+            rid = _run_id(run_id)
+            if not rid:
+                return _err("Name the run the alert belongs to.")
+            a = sops.for_alert(rid, alert_id)
+            return _ok(
+                alert={"alert_id": a.alert.alert_id, "store": a.alert.store_name, "sku": a.alert.sku_name, "severity": a.alert.severity, "value_at_risk_gbp": a.alert.value_at_risk_gbp, "likely_type": a.alert.likely_type},
+                sop={"id": a.sop.id, "title": a.sop.title, "version": a.sop.version, "owner_role": a.sop.owner_role},
+                escalation=a.escalation.model_dump() if a.escalation else None,
+                steps=[{"id": s.id, "text": s.text, "role": s.role, "due_hours": s.due_hours, "evidence": s.evidence, "vendor_task": (s.vendor_task or {}).get("type"), "already_raised": [f"{t.task_id} ({t.status})" for t in s.raised]} for s in a.steps],
+                closure=a.sop.closure, can_raise_vendor_tasks=a.can_raise_tasks,
+                hint="Offer to raise the step's vendor task with propose_job(kind='vendor_task') if the user wants; never raise one without confirmation.",
+            )
+        sid = sop_id or sops.sop_id_for_type(likely_type)
+        if not sid:
+            return _ok(sops=[x.model_dump() for x in sops.list_sops()], hint="Pick one by id.")
+        sop = sops.get(sid)
+        return _ok(sop={"id": sop.id, "title": sop.title, "version": sop.version, "summary": sop.summary, "owner_role": sop.owner_role, "applies_to": sop.applies_to},
+                   steps=[{"id": s.id, "text": s.text, "role": s.role, "due_hours": s.due_hours, "vendor_task": (s.vendor_task or {}).get("type")} for s in sop.steps],
+                   escalation=sop.escalation or None, closure=sop.closure, body=sop.body[: config.ASSISTANT_TEXT_CAP * 3])
+    except LookupError as exc:
+        return _err(str(exc))
+
+
+def find_sop(query: str, k: int = 3) -> dict[str, Any]:
+    """Search the SOPs (what to do if stock is missing, escalation, CCTV, refunds, recounts, failed syncs, false alarms) by keywords.
+
+    Args:
+        query: Free-text question, e.g. "who do I tell if a critical alert is over 500 pounds".
+        k: Number of passages (max 6).
+    """
+    hits = [h for h in knowledge.search(query, k=12) if str(h.get("source", "")).startswith("SOP")][: max(1, min(int(k), 6))]
+    return _ok(hits=hits, count=len(hits), sops=[x.id for x in sops.list_sops()])
+
+
 CATALOGUE = [
     list_datasets, describe_dataset, preview_rows, available_algorithms, list_models, model_detail, list_experiments,
     list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series,
     investigation_plan, compare_plans, triage_summary, propose_job, job_status, search_docs, explain_metric, app_state, usage_summary,
+    list_connectors, connector_status, vendor_lookup, list_vendor_tasks, list_schedules, schedule_history, get_sop, find_sop,
 ]

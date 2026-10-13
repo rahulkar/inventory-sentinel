@@ -7,7 +7,7 @@ import { WarehouseArt } from "../components/Illustrations";
 import { JobProgress } from "../components/JobProgress";
 import { SeverityChip, Spinner, TypeChip } from "../components/Layout";
 import { useHeadlineFigures } from "../hooks/useHeadlineFigures";
-import { PIPELINE_SIZES, PIPELINE_STEPS, usePipeline, type PipelineSize } from "../hooks/usePipeline";
+import { PIPELINE_STEPS, usePipeline } from "../hooks/usePipeline";
 import type { Alert } from "../types";
 import { compactGbp, gbp, num } from "../utils";
 
@@ -29,13 +29,14 @@ export function ExecutivePage() {
   }
   return (
     <div className="exec">
-      <ExecAnswer onRerun={(size) => void pipe.start(size)} />
+      <ExecAnswer onRerun={(connectorId) => void pipe.start(connectorId)} />
     </div>
   );
 }
 
-function ExecAnswer({ onRerun }: { onRerun?: (size: PipelineSize) => void }) {
-  const { setPage, openDrill, datasets, runs } = useApp();
+function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
+  const { setPage, openDrill, datasets, runs, connectors } = useApp();
+  const conn = connectors.find((c) => c.enabled) ?? null;
   const { setDockOpen } = useAssistant();
   const f = useHeadlineFigures();
   const [top, setTop] = useState<Alert[] | null>(null);
@@ -156,13 +157,13 @@ function ExecAnswer({ onRerun }: { onRerun?: (size: PipelineSize) => void }) {
 
           <div className="exec-foot small muted">
             <span>
-              Model in use: {d.run.model_label}. Figures are estimates on {ds?.kind === "synthetic" ? "synthetic demo data" : "the loaded data"}.
+              Model in use: {d.run.model_label}. Figures are estimates on {ds?.kind === "connector" ? `${String(ds.params?.connector_name ?? "vendor")} data through ${ds.date_end}` : ds?.kind === "synthetic" ? "synthetic demo data" : "the loaded data"}.
             </span>
-            {onRerun ? (
+            {onRerun && conn ? (
               <button
                 className="btn sm link"
                 onClick={() => {
-                  if (confirm("Create fresh data, retrain and detect again? About 1 minute at 1 million rows.")) onRerun("1m");
+                  if (confirm(`Sync ${conn.name}, retrain and detect again? Usually a minute or two.`)) onRerun(conn.id);
                 }}
               >
                 Re-run the pipeline
@@ -176,9 +177,12 @@ function ExecAnswer({ onRerun }: { onRerun?: (size: PipelineSize) => void }) {
 }
 
 function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof usePipeline>; onCancel: (id: string) => void; hasRun: boolean }) {
-  const [size, setSize] = useState<PipelineSize>(pipe.size ?? "1m");
+  const { connectors, setPage, setMode } = useApp();
+  const enabled = connectors.filter((c) => c.enabled);
+  const [connectorId, setConnectorId] = useState<string | null>(pipe.connectorId ?? enabled[0]?.id ?? null);
+  const chosen = enabled.find((c) => c.id === connectorId) ?? enabled[0] ?? null;
   const order = PIPELINE_STEPS.map((s) => s.key);
-  const at = pipe.stage === "failed" ? pipe.failedAt ?? "generate" : pipe.stage;
+  const at = pipe.stage === "failed" ? pipe.failedAt ?? "sync" : pipe.stage;
   const idx = order.indexOf(at as (typeof order)[number]);
   return (
     <div className="card pipeline-card">
@@ -189,7 +193,7 @@ function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof useP
         <div>
           <h1 style={{ margin: 0 }}>{pipe.running ? "Finding the anomalies…" : hasRun ? "The last run did not finish" : "See it work in one click"}</h1>
           <p className="muted" style={{ margin: "6px 0 0" }}>
-            Creates a realistic retailer with hidden problems, lets four methods compete to find them, then scores every store, item and day with the winner.
+            Reads the latest stock movements from {chosen ? chosen.name : "your inventory system"}, lets four methods compete to learn what normal looks like there, then scores every store, item and day with the winner.
           </p>
         </div>
         <ol className="stepper">
@@ -223,16 +227,35 @@ function PipelineCard({ pipe, onCancel, hasRun }: { pipe: ReturnType<typeof useP
           </div>
         ) : null}
         {!pipe.running && pipe.stage !== "failed" ? (
-          <div className="row" style={{ gap: 10, alignItems: "center" }}>
-            {(Object.keys(PIPELINE_SIZES) as PipelineSize[]).map((k) => (
-              <button key={k} className={`toggle-chip ${size === k ? "on" : ""}`} aria-pressed={size === k} onClick={() => setSize(k)}>
-                {PIPELINE_SIZES[k].label} · {PIPELINE_SIZES[k].minutes}
+          chosen ? (
+            <div className="row" style={{ gap: 10, alignItems: "center" }}>
+              {enabled.length > 1
+                ? enabled.map((c) => (
+                    <button key={c.id} className={`toggle-chip ${chosen.id === c.id ? "on" : ""}`} aria-pressed={chosen.id === c.id} onClick={() => setConnectorId(c.id)}>
+                      {c.name}
+                    </button>
+                  ))
+                : null}
+              <button className="btn primary lg" onClick={() => void pipe.start(chosen.id)}>
+                ▶ Run the whole pipeline
               </button>
-            ))}
-            <button className="btn primary lg" onClick={() => void pipe.start(size)}>
-              ▶ Run the whole pipeline
-            </button>
-          </div>
+            </div>
+          ) : (
+            <div className="callout">
+              <b>Connect a data source first.</b> Sentinel reads your inventory system over MCP (or the bundled demo vendor).
+              <div className="row mt">
+                <button
+                  className="btn primary"
+                  onClick={() => {
+                    setMode("analyst");
+                    setPage("data");
+                  }}
+                >
+                  Go to Data → Connect
+                </button>
+              </div>
+            </div>
+          )
         ) : null}
       </div>
     </div>

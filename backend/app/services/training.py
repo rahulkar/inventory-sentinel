@@ -186,6 +186,22 @@ def estimate_seconds(keys: list[str], n_train: int, n_eval: int) -> float:
 
 
 def start_job(req: TrainRequest) -> Job:
+    meta, selections, job_id, run_name = prepare(req)
+    steps = [("load", "Loading features"), ("sample", "Sampling history and the evaluation window")]
+    steps += [(f"model:{s.key}", f"Training {s.label}") for s, _ in selections]
+    steps += [("finish", "Saving models")]
+    n_train = min(req.train_sample_size, meta.n_rows)
+    return jobs.submit(
+        "train", f"Train {len(selections)} method{'s' if len(selections) > 1 else ''} on {meta.name}",
+        lambda ctx: _run_job(ctx, req, job_id, selections, run_name),
+        params=req.model_dump(), steps=steps, estimate_seconds=estimate_seconds([s.key for s, _ in selections], n_train, config.EVAL_NEGATIVES), job_id=job_id,
+    )
+
+
+def prepare(req: TrainRequest, job_id: str | None = None) -> tuple[Any, list[tuple[registry.ModelSpec, dict[str, Any]]], str, str]:
+    """Validate a request and register its experiment record. Returns (dataset meta, selections, job id, run name).
+
+    A scheduled pipeline passes its own job id and then calls `_run_job` inline."""
     meta = storage.get_dataset_meta(req.dataset_id)
     if meta is None:
         raise LookupError("Dataset not found.")
@@ -200,7 +216,7 @@ def start_job(req: TrainRequest) -> Job:
         selections.append((spec, registry.coerce_params(spec, sel.params)))
     if not selections:
         raise ValueError("Choose at least one method.")
-    job_id = storage.new_id("job")
+    job_id = job_id or storage.new_id("job")
     run_name = req.run_name or f"Run {time.strftime('%H:%M:%S')}"
     tj = TrainJob(
         job_id=job_id, status="queued", run_name=run_name, dataset_id=meta.id, dataset_name=meta.name, created_at=storage.now_iso(),
@@ -211,15 +227,7 @@ def start_job(req: TrainRequest) -> Job:
         _train_jobs[job_id] = tj
         while len(_train_jobs) > config.JOBS_KEEP:
             _train_jobs.popitem(last=False)
-    steps = [("load", "Loading features"), ("sample", "Sampling history and the evaluation window")]
-    steps += [(f"model:{s.key}", f"Training {s.label}") for s, _ in selections]
-    steps += [("finish", "Saving models")]
-    n_train = min(req.train_sample_size, meta.n_rows)
-    return jobs.submit(
-        "train", f"Train {len(selections)} method{'s' if len(selections) > 1 else ''} on {meta.name}",
-        lambda ctx: _run_job(ctx, req, job_id, selections, run_name),
-        params=req.model_dump(), steps=steps, estimate_seconds=estimate_seconds([s.key for s, _ in selections], n_train, config.EVAL_NEGATIVES), job_id=job_id,
-    )
+    return meta, selections, job_id, run_name
 
 
 def train_sample(ds: storage.Dataset, size: int, exclude_lp: bool, seed: int, extra_exclude: np.ndarray | None = None) -> np.ndarray:
@@ -281,7 +289,7 @@ def _run_job(ctx: jobs.JobContext, req: TrainRequest, job_id: str, selections: l
             )
             pct = percentile_of(meta, s_ev)
             if es.source != "none" and es.n_pos:
-                note = "From the synthetic answer key on the evaluation window." if es.source == "ground_truth" else "From loss-prevention flags: a lower bound, because most incidents were never flagged."
+                note = "From the demo vendor's answer key on the evaluation window." if es.source == "ground_truth" else "From loss-prevention flags: a lower bound, because most incidents were never flagged."
                 meta.calibration = calibration.fit(pct, es.y, es.w, 1 - req.alert_rate, es.source, note)
             else:
                 meta.calibration = calibration.prior(1 - req.alert_rate)
@@ -309,7 +317,8 @@ def _run_job(ctx: jobs.JobContext, req: TrainRequest, job_id: str, selections: l
         raise RuntimeError("No method finished training.")
     scored = [r for r in results if r.metrics.average_precision is not None]
     best = max(scored, key=lambda r: r.metrics.average_precision or 0) if scored else results[0]
-    storage.set_active_model(best.model_id)
+    if req.activate_best:
+        storage.set_active_model(best.model_id)
     _set(job_id, lambda t: (setattr(t, "status", "done"), setattr(t, "best_model_id", best.model_id)))
     return {"best_model_id": best.model_id, "model_ids": [r.model_id for r in results], "dataset_id": ds.meta.id}
 

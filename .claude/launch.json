@@ -4,8 +4,35 @@
     {
       "name": "app",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8010"],
-      "port": 8010
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--app-dir",
+        "backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8010"
+      ],
+      "port": 8010,
+      "env": {
+        "SENTINEL_DEFAULT_CONNECTOR_URL": "http://127.0.0.1:8020/mcp/"
+      }
+    },
+    {
+      "name": "vendor",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "vendor_mock.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8020"
+      ],
+      "port": 8020
     }
   ]
 }

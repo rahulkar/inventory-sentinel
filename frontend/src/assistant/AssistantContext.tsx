@@ -91,8 +91,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, [dockOpen, messages.length]);
 
   const ui = useCallback(
-    (): UiState => ({ page, mode, tab: page === "act" ? actTab : null, selected_dataset_id: selectedDatasetId, selected_run_id: selectedRunId, selected_alert_id: selectedAlertId, drill_store_id: drill?.storeId ?? null, drill_sku_id: drill?.skuId ?? null, active_model_id: activeModel?.model_id ?? null }),
-    [page, mode, actTab, selectedDatasetId, selectedRunId, selectedAlertId, drill, activeModel],
+    (): UiState => ({ page, mode, tab: page === "act" ? actTab : null, selected_dataset_id: selectedDatasetId, selected_run_id: selectedRunId, selected_alert_id: selectedAlertId, drill_store_id: drill?.storeId ?? null, drill_sku_id: drill?.skuId ?? null, active_model_id: activeModel?.model_id ?? null, selected_schedule_id: page === "schedules" ? app.selectedScheduleId : null }),
+    [page, mode, actTab, selectedDatasetId, selectedRunId, selectedAlertId, drill, activeModel, app.selectedScheduleId],
   );
 
   const updateLast = useCallback((fn: (m: ChatMessage) => ChatMessage) => {
@@ -208,7 +208,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           toast(out.proposal.error ?? "Could not start the job", "error");
         } else {
           toast(`Done: ${out.proposal.title}`, "success");
-          await app.refreshModels();
+          await Promise.all([app.refreshModels(), app.refreshConnectors()]);
           await send(`[confirmed ${proposalId}] Done: ${out.proposal.title}.`, { system: true });
         }
       } catch (err) {

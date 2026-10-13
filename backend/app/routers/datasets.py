@@ -1,4 +1,4 @@
-"""Dataset endpoints: generate, import, preview, download, export, delete."""
+"""Dataset endpoints: import, preview, download, export, delete (vendor syncs live in routers/connectors.py)."""
 from __future__ import annotations
 
 import io
@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app import config
 from app.routers.common import stream_upload
-from app.schemas import ConfigureRequest, DatasetMeta, ExportStatus, GenerateRequest, Job, PreviewResponse
-from app.services import datasets, exporter, ingest, jobs, storage
+from app.schemas import ConfigureRequest, DatasetMeta, ExportStatus, Job, PreviewResponse
+from app.services import exporter, ingest, jobs, storage
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -27,43 +27,6 @@ def get_dataset(ds_id: str) -> DatasetMeta:
     if meta is None:
         raise HTTPException(404, "Dataset not found.")
     return meta
-
-
-@router.post("/generate", response_model=Job, status_code=202)
-def generate(req: GenerateRequest) -> Job:
-    n = req.n_stores * req.n_skus * req.n_days
-    if n < config.MIN_ROWS:
-        raise HTTPException(400, f"{n:,} rows is below the minimum of {config.MIN_ROWS:,}. Add stores, SKUs or days.")
-    if n > config.MAX_ROWS:
-        raise HTTPException(400, f"{n:,} rows is above the maximum of {config.MAX_ROWS:,}.")
-    config.ensure_dirs()
-    ds_id = storage.new_id("ds")
-
-    def run(ctx: jobs.JobContext) -> dict:
-        try:
-            ctx.step("simulate", "Simulating stores, SKUs and days")
-            last = {"step": "simulate"}
-
-            def prog(f: float, msg: str) -> None:
-                if f >= 0.45 and last["step"] == "simulate":
-                    ctx.step("features", "Engineering features")
-                    last["step"] = "features"
-                if f >= 0.95 and last["step"] == "features":
-                    ctx.step("summary", "Summarising and saving")
-                    last["step"] = "summary"
-                ctx.progress(f * 100, msg)
-
-            meta = datasets.generate(req, ds_id, prog, ctx.check_cancelled)
-        except BaseException:
-            storage.safe_rmtree(storage.dataset_dir(ds_id))
-            raise
-        return {"dataset_id": meta.id, "n_rows": meta.n_rows}
-
-    est = n / 1e6 * config.TIMING["generate_s_per_1m"] + 3
-    return jobs.submit(
-        "generate", f"Generate {req.n_stores} stores x {req.n_skus} SKUs x {req.n_days} days ({n:,} rows)", run, params=req.model_dump(),
-        steps=[("simulate", "Simulating stores, SKUs and days"), ("features", "Engineering features"), ("summary", "Summarising and saving")], estimate_seconds=round(est, 1),
-    )
 
 
 def _import_job(ds_id: str, src, is_zip: bool, name: str | None, override: dict[str, str] | None, title: str, size: int) -> Job:

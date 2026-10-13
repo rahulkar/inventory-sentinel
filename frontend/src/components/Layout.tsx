@@ -16,6 +16,7 @@ const EXEC: { key: Page; label: string }[] = [
   { key: "alerts", label: "Alerts" },
   { key: "plan", label: "Plan" },
 ];
+const OPERATIONS: { key: Page; label: string }[] = [{ key: "schedules", label: "Schedules" }];
 const ANALYST: { key: Page; label: string }[] = [
   { key: "models", label: "Models" },
   { key: "experiments", label: "Experiments" },
@@ -67,6 +68,15 @@ export function Layout({ children }: { children: ReactNode }) {
               {BUSINESS.map((p) => (
                 <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
                   <span className="step">{p.step}</span>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <span className="nav-divider" />
+            <div className="nav-group" role="group" aria-label="Operations">
+              <span className="nav-caption">Operations</span>
+              {OPERATIONS.map((p) => (
+                <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
                   {p.label}
                 </button>
               ))}

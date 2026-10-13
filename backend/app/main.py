@@ -20,9 +20,9 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from app import config  # noqa: E402
 from app.assistant import proposals  # noqa: E402
-from app.routers import assistant, datasets, jobs, planner, runs, settings, training  # noqa: E402
+from app.routers import assistant, connectors as connectors_router, datasets, jobs, planner, runs, schedules, settings, sops, training  # noqa: E402
 from app.schemas import AppConfig, Health  # noqa: E402
-from app.services import envprobe, registry, storage  # noqa: E402
+from app.services import connectors, envprobe, registry, scheduler, storage  # noqa: E402
 
 try:
     from app.assistant.mcp_server import mcp_app, server as mcp_server
@@ -41,6 +41,10 @@ async def lifespan(_: FastAPI):
     if removed:
         print(f"[startup] removed {len(removed)} orphaned item(s) from data/")
     proposals.load()
+    try:
+        connectors.ensure_default()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] could not register the default connector: {exc}")
     issues, engines = envprobe.report()
     for i in issues:
         print(f"[startup] {i}")
@@ -52,12 +56,17 @@ async def lifespan(_: FastAPI):
         print("[startup] AI gateway TLS certificates are verified " + (f"against the CA bundle {tls.ca_bundle}" if tls.ca_bundle else "against the system store"))
     else:
         print("[startup] AI gateway TLS certificate verification is off (default for lab gateways; switch on in Settings or LITELLM_SSL_VERIFY=true)")
+    if os.environ.get("SENTINEL_SCHEDULER", "on").lower() not in ("0", "off", "false", "no"):
+        scheduler.start()
     # google-adk and litellm are imported lazily on the first chat, on the event-loop thread
-    if mcp_server is not None:
-        async with mcp_server.session_manager.run():
+    try:
+        if mcp_server is not None:
+            async with mcp_server.session_manager.run():
+                yield
+        else:
             yield
-    else:
-        yield
+    finally:
+        scheduler.stop()
     try:
         from app.assistant.engine import engine
 
@@ -102,12 +111,17 @@ def app_config() -> AppConfig:
         timing[f"model_{key}_fit_s"] = spec.fit_seconds
         timing[f"model_{key}_score_s_per_1m"] = spec.score_seconds_per_1m
     return AppConfig(
-        min_rows=config.MIN_ROWS, max_rows=config.MAX_ROWS, default_stores=config.DEFAULT_STORES, default_skus=config.DEFAULT_SKUS, default_days=config.DEFAULT_DAYS,
-        max_upload_mb=config.MAX_UPLOAD_MB, default_train_sample=config.DEFAULT_TRAIN_SAMPLE, quick_train_sample=config.QUICK_TRAIN_SAMPLE,
+        max_rows=config.MAX_ROWS, max_upload_mb=config.MAX_UPLOAD_MB, default_train_sample=config.DEFAULT_TRAIN_SAMPLE, quick_train_sample=config.QUICK_TRAIN_SAMPLE,
         default_alert_rate=config.DEFAULT_ALERT_RATE, planner_defaults=config.PLANNER_DEFAULTS, minutes_by_type=config.MINUTES_BY_TYPE,
         persist_by_type=config.PERSIST_BY_TYPE, triage_outcomes=config.TRIAGE_OUTCOMES, anomaly_types=config.ANOMALY_TYPES[1:] + ["unclear"],
         categories=config.CATEGORIES, timing=timing,
     )
+
+
+@app.exception_handler(connectors.ConnectorError)
+async def vendor_unreachable(_: Request, exc: connectors.ConnectorError) -> JSONResponse:
+    """The vendor system could not be reached or refused the request."""
+    return JSONResponse({"detail": str(exc), "kind": exc.kind}, status_code=502)
 
 
 @app.exception_handler(LookupError)
@@ -116,7 +130,7 @@ async def not_found(_: Request, exc: LookupError) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=404)
 
 
-for r in (datasets.router, training.router, runs.router, planner.router, jobs.router, settings.router, assistant.router):
+for r in (datasets.router, connectors_router.router, schedules.router, sops.router, training.router, runs.router, planner.router, jobs.router, settings.router, assistant.router):
     app.include_router(r)
 
 if mcp_app is not None:

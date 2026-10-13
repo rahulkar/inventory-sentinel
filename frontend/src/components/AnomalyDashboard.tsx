@@ -151,7 +151,7 @@ export function AnomalyDashboard({ runId }: { runId: string }) {
             <>
               <dt>Exam window</dt>
               <dd>
-                {ev.window}: incidents caught {plain.pct(ev.incident_recall)}, alerts real {plain.pct(ev.alert_precision)}, value caught {ev.value_captured_pct?.toFixed(0)}%, likely type right {plain.pct(ev.type_accuracy)} (synthetic answer key)
+                {ev.window}: incidents caught {plain.pct(ev.incident_recall)}, alerts real {plain.pct(ev.alert_precision)}, value caught {ev.value_captured_pct?.toFixed(0)}%, likely type right {plain.pct(ev.type_accuracy)} (demo vendor's answer key)
               </dd>
             </>
           ) : null}

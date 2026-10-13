@@ -379,7 +379,7 @@ export function StoryPage() {
       <div className="next-step">
         <div>
           <h3 style={{ margin: "2px 0" }}>See it on real-sized data</h3>
-          <div className="muted">{exec ? "One click runs the whole pipeline: realistic data, four methods competing, then every store, item and day scored." : "Generate 5 million store-SKU-days, train four methods, run detection and plan a week of investigations."}</div>
+          <div className="muted">{exec ? "One click runs the whole pipeline: the vendor's latest data, four methods competing, then every store, item and day scored." : "Sync a vendor, train four methods on its history, run detection, follow the SOPs and plan a week of investigations."}</div>
         </div>
         <button className="btn primary" onClick={() => setPage(exec ? "overview" : "data")}>
           {exec ? "See the answer →" : "Start with Data →"}

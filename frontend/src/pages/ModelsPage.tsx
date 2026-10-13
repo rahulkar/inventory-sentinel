@@ -42,7 +42,7 @@ export function ModelsPage() {
       <div className="page-header">
         <div>
           <h1>Models</h1>
-          <p>Every trained model, best first. Average precision is measured on the exam window against the synthetic answer key (or loss-prevention flags for real data).</p>
+          <p>Every trained model, best first. Average precision is measured on the exam window against a demo vendor's answer key, or loss-prevention flags and team feedback for real vendors.</p>
         </div>
       </div>
       <div className="card">

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------- jobs / config
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
-export type JobType = "generate" | "upload" | "train" | "detect" | "retrain" | "export";
+export type JobType = "upload" | "sync" | "pipeline" | "train" | "detect" | "retrain" | "export";
 export type Severity = "medium" | "high" | "critical";
 export type Outcome = "confirmed_theft" | "counting_error" | "process_issue" | "false_alarm";
 
@@ -35,11 +35,7 @@ export interface Job {
 }
 
 export interface AppConfig {
-  min_rows: number;
   max_rows: number;
-  default_stores: number;
-  default_skus: number;
-  default_days: number;
   max_upload_mb: number;
   default_train_sample: number;
   quick_train_sample: number;
@@ -54,16 +50,6 @@ export interface AppConfig {
 }
 
 // ---------------------------------------------------------------- datasets
-export interface GenerateRequest {
-  n_stores: number;
-  n_skus: number;
-  n_days: number;
-  seed: number;
-  anomaly_multiplier: number;
-  lp_coverage: number;
-  name?: string | null;
-}
-
 export interface ColumnInfo {
   name: string;
   role: "id" | "date" | "measure" | "scan" | "flag" | "feature" | "context" | "ground_truth";
@@ -105,7 +91,7 @@ export interface Detection {
 export interface DatasetMeta {
   id: string;
   name: string;
-  kind: "synthetic" | "upload";
+  kind: "synthetic" | "upload" | "connector"; // "synthetic" only on datasets made before connectors existed
   created_at: string;
   n_rows: number;
   n_stores: number;
@@ -489,7 +475,7 @@ export interface TriageRecord {
   warehouse_team: string;
   outcome: Outcome;
   note: string | null;
-  source: "user" | "simulated";
+  source: "user" | "simulated" | "vendor_task";
   decided_at: string;
 }
 
@@ -675,6 +661,7 @@ export interface UiState {
   drill_store_id: string | null;
   drill_sku_id: string | null;
   active_model_id: string | null;
+  selected_schedule_id?: string | null;
 }
 
 export interface ChatRequest {
@@ -698,6 +685,8 @@ export interface Proposal {
   decided_at: string | null;
   error: string | null;
   result: Record<string, unknown> | null;
+  ttl_s?: number | null;
+  source?: "chat" | "scheduler" | "mcp";
 }
 
 export type ChatEvent =
@@ -795,4 +784,241 @@ export interface UsageReport {
   tools: { name: string; calls: number }[];
   by_day: { day: string; llm_calls: number; tool_calls: number; total_tokens: number; cost_usd: number; invocations: number }[];
   sessions: { session_id: string; last_ts: number; llm_calls: number; tool_calls: number; total_tokens: number; cost_usd: number; invocations: number }[];
+}
+
+// ---------------------------------------------------------------- vendor connectors (MCP)
+export interface ConnectorSync {
+  at: string | null;
+  status: "ok" | "failed" | "running" | null;
+  job_id: string | null;
+  dataset_id: string | null;
+  rows: number;
+  days_pulled: number;
+  synced_through: string | null;
+  error: string | null;
+  warnings: string[];
+  seconds: number | null;
+}
+
+export interface ConnectorCapabilities {
+  contract: string;
+  version: string;
+  vendor: { name: string; system?: string };
+  status: string;
+  timezone?: string;
+  currency?: string;
+  data_range?: { first_date: string; last_date: string | null };
+  business_date?: string;
+  counts?: { stores: number; skus: number };
+  fields?: { daily: string[] };
+  features?: { lp_flags?: boolean; tasks?: boolean; live_lookup?: boolean; answer_key?: boolean; answer_key_demo_only?: boolean };
+  task_types?: string[];
+  backoffice_url?: string;
+  seeding?: { progress: number; message: string | null };
+}
+
+export interface Connector {
+  id: string;
+  name: string;
+  transport: "mcp";
+  url: string;
+  auth_header: string;
+  auth_scheme: string;
+  token: string; // masked
+  window_days: number;
+  resync_days: number;
+  retention: number;
+  use_answer_key: boolean;
+  feedback_from_tasks: boolean;
+  enabled: boolean;
+  created_at: string;
+  capabilities: ConnectorCapabilities | null;
+  tested_at: string | null;
+  last_sync: ConnectorSync | null;
+}
+
+export interface ConnectorIn {
+  name: string;
+  url: string;
+  auth_header?: string;
+  auth_scheme?: string;
+  token?: string | null;
+  window_days?: number;
+  resync_days?: number;
+  retention?: number;
+  use_answer_key?: boolean;
+  feedback_from_tasks?: boolean;
+  enabled?: boolean;
+}
+
+export interface ConnectorTest {
+  ok: boolean;
+  capabilities: ConnectorCapabilities | null;
+  error: string | null;
+  seconds: number;
+}
+
+export interface StockPosition {
+  store: { store_id: string; store_name: string; region: string };
+  sku: { sku_id: string; sku_name: string; category: string; unit_cost: number };
+  as_of: string;
+  on_hand: number | null;
+  last_days: { date: string; opening: number; received: number; sold: number; returned: number; adjusted: number; expected_closing: number; counted_closing: number; variance: number }[];
+}
+
+// ---------------------------------------------------------------- vendor tasks
+export interface VendorTask {
+  task_id: string;
+  connector_id: string;
+  alert_key: string | null;
+  alert_id: string | null;
+  run_id: string | null;
+  store_id: string;
+  sku_id: string | null;
+  type: string;
+  priority: string;
+  title: string;
+  status: string;
+  outcome: string | null;
+  outcome_units: number | null;
+  outcome_note: string | null;
+  sop_id: string | null;
+  sop_step: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  feedback_recorded: boolean;
+}
+
+export interface VendorTaskDraft {
+  run_id: string;
+  alert_id: string;
+  type: string;
+  priority?: string | null;
+  title?: string | null;
+  sop_id?: string | null;
+  sop_step?: string | null;
+  note?: string | null;
+}
+
+export interface VendorTaskResult {
+  created: VendorTask[];
+  existing: VendorTask[];
+  failed: { alert_id: string; type: string | null; error: string }[];
+}
+
+// ---------------------------------------------------------------- SOPs
+export interface SopStep {
+  id: string;
+  text: string;
+  role: string | null;
+  due_hours: number | null;
+  evidence: string[];
+  vendor_task: { type: string; priority?: string; title?: string; description?: string } | null;
+  raised: VendorTask[];
+}
+
+export interface SopEscalation {
+  level: string;
+  label: string;
+  response_hours: number | null;
+  notify: string[];
+}
+
+export interface SopSummary {
+  id: string;
+  title: string;
+  version: string;
+  applies_to: string[];
+  parent: string | null;
+  owner_role: string | null;
+  summary: string | null;
+}
+
+export interface Sop extends SopSummary {
+  escalation: Record<string, unknown>[];
+  steps: SopStep[];
+  closure: string[];
+  triage_mapping: Record<string, string>;
+  body: string;
+}
+
+export interface AlertSop {
+  alert: Alert;
+  sop: Sop;
+  parent: SopSummary | null;
+  escalation: SopEscalation | null;
+  steps: SopStep[];
+  connector_id: string | null;
+  can_raise_tasks: boolean;
+  task_types: string[];
+}
+
+// ---------------------------------------------------------------- schedules
+export interface ScheduleFrequency {
+  kind: "interval" | "daily" | "weekly";
+  every_hours: number;
+  at: string;
+  days: number[];
+}
+
+export interface SchedulePipeline {
+  sync: boolean;
+  model_policy: "active" | "fixed" | "retrain";
+  model_id: string | null;
+  train: { models: { key: string; params: Record<string, unknown> }[]; train_sample_size: number; alert_rate: number; activate_retrained: boolean; min_interval_days: number };
+  auto_tasks: { enabled: boolean; severities: Severity[]; min_value_gbp: number; max_tasks: number };
+}
+
+export interface ScheduleIn {
+  name: string;
+  enabled: boolean;
+  connector_id: string;
+  timezone: string;
+  frequency: ScheduleFrequency;
+  pipeline: SchedulePipeline;
+  catch_up: "once" | "skip";
+}
+
+export interface Schedule extends ScheduleIn {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  next_run_at: string | null;
+  last_run: Partial<ScheduleRun> | null;
+  last_retrain_at: string | null;
+  last_model_id: string | null;
+}
+
+export interface ScheduleRun {
+  run_id: string;
+  schedule_id: string;
+  schedule_name: string;
+  data_through: string | null;
+  trigger: "timer" | "manual" | "catch_up";
+  status: "queued" | "running" | "done" | "failed" | "skipped" | "cancelled";
+  started_at: string;
+  finished_at: string | null;
+  job_id: string | null;
+  dataset_id: string | null;
+  model_id: string | null;
+  detection_run_id: string | null;
+  retrained: boolean;
+  alerts: number | null;
+  new_alerts: number | null;
+  new_critical: number | null;
+  value_at_risk_gbp: number | null;
+  proposal_id: string | null;
+  error: string | null;
+  error_kind: string | null;
+  sop_id: string | null;
+  warnings: string[];
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  last_tick: string | null;
+  tick_seconds: number;
+  schedules: number;
+  enabled: number;
 }

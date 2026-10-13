@@ -172,7 +172,7 @@ def build_bundle(model_id: str, force: bool = False) -> tuple[Path, str]:
         return out, bundle_filename(meta)
     has_onnx = paths["onnx"].exists()
     model_json = json.loads(meta.model_dump_json())
-    from app.services.synth import DAILY_SPECS
+    from app.services.schema_spec import DAILY_SPECS
 
     model_json["raw_columns"] = [c for c in DAILY_SPECS if c not in ("date_idx", "store_code", "sku_code")]
     tmp = out.with_suffix(".zip.tmp")

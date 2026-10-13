@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SopChecklist } from "./SopChecklist";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
 import type { SeriesMatch, SeriesResponse } from "../types";
@@ -9,7 +10,7 @@ import { TriageButtons } from "./AlertQueue";
 import { gbp, gbp2, num, OUTCOME_LABEL, TYPE_LABEL } from "../utils";
 
 export function SeriesDrilldown({ runId, datasetHasTruth }: { runId: string; datasetHasTruth: boolean }) {
-  const { drill, openDrill, toast } = useApp();
+  const { drill, openDrill, toast, selectedAlertId } = useApp();
   const [q, setQ] = useState("");
   const [matches, setMatches] = useState<SeriesMatch[]>([]);
   const [s, setS] = useState<SeriesResponse | null>(null);
@@ -47,6 +48,8 @@ export function SeriesDrilldown({ runId, datasetHasTruth }: { runId: string; dat
   const gap = s ? s.points.reduce((a, p) => a + p.variance_units, 0) : 0;
   const flagged = s ? s.points.filter((p) => p.severity > 0).length : 0;
   const days = s ? Object.entries(s.flagged_reasons) : [];
+  const SEV: Record<string, number> = { critical: 3, high: 2, medium: 1 };
+  const focus = s ? s.alerts.find((a) => a.alert_id === selectedAlertId) ?? [...s.alerts].sort((a, b) => (SEV[b.severity] ?? 0) - (SEV[a.severity] ?? 0) || b.value_at_risk_gbp - a.value_at_risk_gbp)[0] ?? null : null;
   return (
     <div className="stack">
       <div className="card">
@@ -54,7 +57,7 @@ export function SeriesDrilldown({ runId, datasetHasTruth }: { runId: string; dat
           <h2>Find a store and item</h2>
           {datasetHasTruth ? (
             <label className="check small">
-              <input type="checkbox" checked={answerKey} onChange={(e) => setAnswerKey(e.target.checked)} /> show the answer key
+              <input type="checkbox" checked={answerKey} onChange={(e) => setAnswerKey(e.target.checked)} /> show the demo answer key
             </label>
           ) : null}
         </div>
@@ -153,11 +156,20 @@ export function SeriesDrilldown({ runId, datasetHasTruth }: { runId: string; dat
               )}
               {s.triage.length ? (
                 <div className="small mt">
-                  <b>Team decisions:</b> {s.triage.map((t) => `${t.start_date} ${OUTCOME_LABEL[t.outcome]}${t.source === "simulated" ? " (simulated)" : ""}`).join(" · ")}
+                  <b>Team decisions:</b> {s.triage.map((t) => `${t.start_date} ${OUTCOME_LABEL[t.outcome]}${t.source === "simulated" ? " (simulated)" : t.source === "vendor_task" ? " (from a vendor task)" : ""}`).join(" · ")}
                 </div>
               ) : null}
             </div>
           </div>
+          {focus ? (
+            <div className="card">
+              <div className="card-title">
+                <h2>What to do about {focus.alert_id}</h2>
+                <span className="small muted">from the standard operating procedures</span>
+              </div>
+              <SopChecklist key={focus.alert_id} runId={runId} alertId={focus.alert_id} />
+            </div>
+          ) : null}
         </>
       )}
     </div>

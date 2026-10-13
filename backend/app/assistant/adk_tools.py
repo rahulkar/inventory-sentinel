@@ -14,7 +14,7 @@ from google.adk.tools import ToolContext
 
 from app.assistant import tools as T
 
-UI_KEYS = ("ui:page", "ui:tab", "ui:selected_dataset_id", "ui:selected_run_id", "ui:selected_alert_id", "ui:drill_store_id", "ui:drill_sku_id", "ui:active_model_id", "ui:session_id")
+UI_KEYS = ("ui:page", "ui:tab", "ui:selected_dataset_id", "ui:selected_run_id", "ui:selected_alert_id", "ui:drill_store_id", "ui:drill_sku_id", "ui:active_model_id", "ui:session_id", "ui:selected_schedule_id")
 FROM_UI = {"run_id": "selected_run_id", "dataset_id": "selected_dataset_id", "alert_id": "selected_alert_id", "store_id": "drill_store_id", "sku_id": "drill_sku_id"}
 
 
@@ -52,18 +52,31 @@ def as_async_tool(fn: Callable[..., dict[str, Any]]) -> Callable[..., Any]:
 
 
 async def propose_job(kind: str, params: dict[str, Any] | None = None, tool_context: ToolContext = None) -> dict[str, Any]:  # type: ignore[assignment]
-    """Propose a job for the user to confirm; nothing runs until they press Confirm in the chat.
+    """Propose an action for the user to confirm; nothing runs until they press Confirm in the chat.
 
     Args:
-        kind: One of "generate" (n_stores, n_skus, n_days, seed, anomaly_multiplier, lp_coverage), "configure" (dataset_id, column_map),
-            "train" (dataset_id, models: list of method keys zscore/iforest/autoencoder/lof, quick: true/false, alert_rate), "detect" (dataset_id, model_id),
-            "retrain_feedback" (model_id, alpha), "export_dataset" (dataset_id), "export_onnx" (model_id), "activate_model" (model_id).
-        params: Parameters for that kind; omitted ones get sensible defaults (the selected dataset, the model in use, all four methods).
+        kind: One of
+            "sync" (connector_id, full) - pull new days from a vendor connector into a fresh snapshot;
+            "train" (dataset_id, models: list of method keys zscore/iforest/autoencoder/lof, quick: true/false, alert_rate); "detect" (dataset_id, model_id);
+            "retrain_feedback" (model_id, alpha); "activate_model" (model_id); "configure" (dataset_id, column_map) for imported CSVs;
+            "export_dataset" (dataset_id); "export_onnx" (model_id);
+            "create_schedule" (name, connector_id, at "HH:MM", days ["mon",...] or every_hours, timezone, model_policy "active"/"fixed"/"retrain",
+            model_id, models [algorithm keys, implies retrain], activate_retrained, auto_tasks true/false, severities, min_value_gbp, max_tasks);
+            "update_schedule" (schedule_id + any create_schedule field); "run_schedule" (schedule_id);
+            "vendor_task" (run_id, tasks: [{alert_id, type?, priority?, note?, sop_id?, sop_step?}]) - raise tasks in the vendor's system.
+        params: Parameters for that kind; omitted ones get sensible defaults (the selected dataset or run, the model in use, the only connector).
     """
     ui = _ui(tool_context)
     p = dict(params or {})
-    if kind in ("train", "detect", "export_dataset", "configure", "generate") and not p.get("dataset_id") and ui.get("selected_dataset_id") and kind != "generate":
+    if kind in ("train", "detect", "export_dataset", "configure") and not p.get("dataset_id") and ui.get("selected_dataset_id"):
         p["dataset_id"] = ui["selected_dataset_id"]
+    if kind == "vendor_task":
+        if not p.get("run_id") and ui.get("selected_run_id"):
+            p["run_id"] = ui["selected_run_id"]
+        if not p.get("tasks") and not p.get("alert_id") and ui.get("selected_alert_id"):
+            p["tasks"] = [{"alert_id": ui["selected_alert_id"]}]
+    if kind in ("update_schedule", "run_schedule") and not p.get("schedule_id") and ui.get("selected_schedule_id"):
+        p["schedule_id"] = ui["selected_schedule_id"]
     return await asyncio.to_thread(T.propose_job, kind, p, ui.get("session_id") or "chat")
 
 
@@ -104,9 +117,20 @@ triage_summary = as_async_tool(T.triage_summary)
 job_status = as_async_tool(T.job_status)
 search_docs = as_async_tool(T.search_docs)
 explain_metric = as_async_tool(T.explain_metric)
+list_connectors = as_async_tool(T.list_connectors)
+connector_status = as_async_tool(T.connector_status)
+vendor_lookup = as_async_tool(T.vendor_lookup)
+list_vendor_tasks = as_async_tool(T.list_vendor_tasks)
+list_schedules = as_async_tool(T.list_schedules)
+schedule_history = as_async_tool(T.schedule_history)
+get_sop = as_async_tool(T.get_sop)
+find_sop = as_async_tool(T.find_sop)
 
 COMMON = [app_state, search_docs, explain_metric, job_status, usage_summary]
 DATA = [list_datasets, describe_dataset, preview_rows]
+VENDOR = [list_connectors, connector_status, vendor_lookup, list_vendor_tasks]
+OPS = [list_schedules, schedule_history]
+SOP = [get_sop, find_sop]
 MODEL = [list_models, model_detail, list_experiments, available_algorithms, triage_summary]
 ALERTS = [list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series]
 PLAN = [list_detection_runs, alert_summary, investigation_plan, compare_plans, hotspots]
@@ -152,5 +176,13 @@ def tool_label(name: str, args: dict[str, Any]) -> str:
         "explain_metric": f"Looking up '{a.get('term', '')}'",
         "app_state": "Reading what is loaded",
         "usage_summary": "Reading the team's usage and cost",
+        "list_connectors": "Listing vendor connectors",
+        "connector_status": "Checking the vendor connector" + (" (live test)" if a.get("test") else ""),
+        "vendor_lookup": f"Asking the vendor for {a.get('store_id') or ''} {a.get('sku_id') or ''} stock".replace("  ", " "),
+        "list_vendor_tasks": "Reading vendor tasks",
+        "list_schedules": "Listing schedules",
+        "schedule_history": "Reading scheduled runs",
+        "get_sop": "Opening the SOP" + (f" for {a.get('alert_id')}" if a.get("alert_id") else f" {a.get('sop_id')}" if a.get("sop_id") else ""),
+        "find_sop": f"Searching SOPs for '{a.get('query', '')}'",
     }
     return labels.get(name, name.replace("_", " "))

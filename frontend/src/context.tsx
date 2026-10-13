@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError } from "./api";
-import type { AppConfig, DatasetMeta, DetectionRunSummary, Job, ModelMeta, ModelSpec, ModelSummary } from "./types";
+import type { AppConfig, Connector, DatasetMeta, DetectionRunSummary, Job, ModelMeta, ModelSpec, ModelSummary } from "./types";
 import { defaultConfig, isTerminal } from "./utils";
 
-export type Page = "overview" | "story" | "data" | "train" | "act" | "models" | "experiments" | "assistant" | "settings" | "alerts" | "plan";
+export type Page = "overview" | "story" | "data" | "train" | "act" | "schedules" | "models" | "experiments" | "assistant" | "settings" | "alerts" | "plan";
 export type Area = "business" | "analyst";
 /** exec = lean CIO/CTO view (Overview, Alerts, Plan, Story); analyst = every page and tab. */
 export type Mode = "exec" | "analyst";
@@ -40,6 +40,10 @@ interface AppState {
   openDrawer: (d: Drawer | null) => void;
   config: AppConfig;
   datasets: DatasetMeta[];
+  connectors: Connector[];
+  refreshConnectors: () => Promise<void>;
+  selectedScheduleId: string | null;
+  setSelectedScheduleId: (id: string | null) => void;
   models: ModelSummary[];
   activeModel: ModelMeta | null;
   availableModels: ModelSpec[];
@@ -77,7 +81,8 @@ export function errorMessage(e: unknown): string {
 }
 
 const JOB_TITLES: Record<string, string> = {
-  generate: "Dataset generated",
+  sync: "Sync finished",
+  pipeline: "Scheduled run finished",
   upload: "Dataset imported",
   train: "Training finished",
   detect: "Detection finished",
@@ -91,6 +96,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [drawer, setDrawer] = useState<Drawer | null>(null);
   const [config, setConfig] = useState<AppConfig>(defaultConfig());
   const [datasets, setDatasets] = useState<DatasetMeta[]>([]);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [activeModel, setActiveModel] = useState<ModelMeta | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelSpec[]>([]);
@@ -122,6 +129,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const list = await api.datasets.list();
     setDatasets(list);
     setSelectedDatasetId((cur) => (cur && list.some((d) => d.id === cur) ? cur : list[0]?.id ?? null));
+  }, []);
+
+  const refreshConnectors = useCallback(async () => {
+    setConnectors(await api.connectors.list());
   }, []);
 
   const refreshModels = useCallback(async () => {
@@ -221,13 +232,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConfig(cfg);
         setAvailableModels(specs);
         setJobs((cur) => ({ ...cur, ...Object.fromEntries(active.map((j) => [j.job_id, j])) }));
-        await Promise.all([refreshDatasets(), refreshModels(), refreshRuns()]);
+        await Promise.all([refreshDatasets(), refreshModels(), refreshRuns(), refreshConnectors()]);
       } catch (e) {
         setBackendOk(false);
         toast(`Cannot reach the API: ${errorMessage(e)}`, "error");
       }
     })();
-  }, [refreshDatasets, refreshModels, refreshRuns, toast]);
+  }, [refreshDatasets, refreshModels, refreshRuns, refreshConnectors, toast]);
+
+  // Schedules start jobs on the server by themselves: pick those up so they show in the jobs pill and refresh the lists.
+  useEffect(() => {
+    if (!backendOk) return;
+    const t = setInterval(async () => {
+      try {
+        const active = await api.jobs.list(true);
+        setJobs((cur) => {
+          const fresh = active.filter((j) => !cur[j.job_id]);
+          return fresh.length ? { ...cur, ...Object.fromEntries(fresh.map((j) => [j.job_id, j])) } : cur;
+        });
+      } catch {
+        /* transient */
+      }
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [backendOk]);
 
   // Poll every watched job that is still active; refresh lists when one finishes.
   const activeIds = useMemo(
@@ -253,10 +281,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             notified.current.add(id);
             if (j.status === "done") {
               toast(`${JOB_TITLES[j.type] ?? "Job finished"}: ${j.title}`, "success");
-              if (j.type === "generate" || j.type === "upload") {
-                await refreshDatasets();
+              if (j.type === "sync" || j.type === "upload") {
+                await Promise.all([refreshDatasets(), refreshConnectors()]);
                 const dsId = j.result?.dataset_id;
                 if (typeof dsId === "string") setSelectedDatasetId(dsId);
+              } else if (j.type === "pipeline") {
+                await Promise.all([refreshDatasets(), refreshConnectors(), refreshModels(), refreshRuns()]);
+                const rid = j.result?.run_id;
+                if (typeof rid === "string") setSelectedRunId(rid);
               } else if (j.type === "train" || j.type === "retrain") {
                 await refreshModels();
               } else if (j.type === "detect") {
@@ -268,6 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               }
             } else if (j.status === "failed") {
               toast(`${j.title} failed: ${j.error ?? "unknown error"}`, "error");
+              if (j.type === "sync" || j.type === "pipeline") await refreshConnectors();
             } else {
               toast(`${j.title} was cancelled`, "info");
             }
@@ -283,7 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stopped = true;
       clearInterval(t);
     };
-  }, [activeIds, refreshDatasets, refreshModels, refreshRuns, toast]);
+  }, [activeIds, refreshDatasets, refreshModels, refreshRuns, refreshConnectors, toast]);
 
   const activeJobs = useMemo(() => Object.values(jobs).filter((j) => !isTerminal(j.status)).sort((a, b) => a.created_at.localeCompare(b.created_at)), [jobs]);
   const area: Area = page === "models" || page === "experiments" ? "analyst" : "business";
@@ -299,6 +332,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openDrawer: setDrawer,
       config,
       datasets,
+      connectors,
+      refreshConnectors,
+      selectedScheduleId,
+      setSelectedScheduleId,
       models,
       activeModel,
       availableModels,
@@ -326,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toasts,
       backendOk,
     }),
-    [page, area, setPage, mode, setMode, drawer, config, datasets, models, activeModel, availableModels, runs, selectedDatasetId, selectedRunId, selectedAlertId, drill, openDrill, actTab, refreshDatasets, refreshModels, refreshRuns, activateModel, deleteModel, jobs, activeJobs, watchJob, cancelJob, toast, toasts, backendOk],
+    [page, area, setPage, mode, setMode, drawer, config, datasets, connectors, refreshConnectors, selectedScheduleId, models, activeModel, availableModels, runs, selectedDatasetId, selectedRunId, selectedAlertId, drill, openDrill, actTab, refreshDatasets, refreshModels, refreshRuns, activateModel, deleteModel, jobs, activeJobs, watchJob, cancelJob, toast, toasts, backendOk],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

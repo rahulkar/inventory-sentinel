@@ -1,4 +1,4 @@
-"""Turn raw daily columns (synthetic or imported) into a stored dataset: index, features, stats, metadata."""
+"""Turn raw daily columns (imported or synced from a vendor connector) into a stored dataset: index, features, stats, metadata."""
 from __future__ import annotations
 
 import gc
@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 
 from app import config
-from app.schemas import ColumnInfo, DatasetMeta, DatasetStats, Detection, GenerateRequest, HistBin, NumericStats
-from app.services import colstore, features as F, storage, synth
+from app.schemas import ColumnInfo, DatasetMeta, DatasetStats, Detection, HistBin, NumericStats
+from app.services import colstore, features as F, storage
+from app.services.schema_spec import DAILY_SPECS, TRUTH_SPECS
 
-DAILY_COLUMNS = list(synth.DAILY_SPECS)
+DAILY_COLUMNS = list(DAILY_SPECS)
 MEASURE_ROLE = {
     "date_idx": "date", "store_code": "id", "sku_code": "id",
     "pos_scans": "scan", "manual_entry_scans": "scan", "void_count": "scan", "override_count": "scan",
@@ -95,10 +96,10 @@ def compute_stats(daily: dict[str, np.ndarray], features: dict[str, np.ndarray],
 def column_infos(present: list[str], has_truth: bool) -> list[ColumnInfo]:
     from app.assistant.plain_language import FEATURE_LABELS
 
-    cols = [ColumnInfo(name=c, role=MEASURE_ROLE.get(c, "measure"), dtype=str(synth.DAILY_SPECS[c].__name__ if hasattr(synth.DAILY_SPECS[c], "__name__") else synth.DAILY_SPECS[c]), label=FEATURE_LABELS.get(c)) for c in DAILY_COLUMNS if c in present]
+    cols = [ColumnInfo(name=c, role=MEASURE_ROLE.get(c, "measure"), dtype=str(DAILY_SPECS[c].__name__ if hasattr(DAILY_SPECS[c], "__name__") else DAILY_SPECS[c]), label=FEATURE_LABELS.get(c)) for c in DAILY_COLUMNS if c in present]
     cols += [ColumnInfo(name=f, role="feature" if f in F.DETECT_FEATURES else "context", dtype="float32", label=FEATURE_LABELS.get(f)) for f in F.FEATURES]
     if has_truth:
-        cols += [ColumnInfo(name=t, role="ground_truth", dtype=str(synth.TRUTH_SPECS[t].__name__), label=FEATURE_LABELS.get(t)) for t in synth.TRUTH_SPECS]
+        cols += [ColumnInfo(name=t, role="ground_truth", dtype=str(TRUTH_SPECS[t].__name__), label=FEATURE_LABELS.get(t)) for t in TRUTH_SPECS]
     return cols
 
 
@@ -168,16 +169,3 @@ def finalize(
     storage.register_dataset(meta)
     return meta
 
-
-def generate(req: GenerateRequest, ds_id: str, on_progress: Callable[[float, str], None], check_cancelled: Callable[[], None]) -> DatasetMeta:
-    p = synth.GenParams(n_stores=req.n_stores, n_skus=req.n_skus, n_days=req.n_days, seed=req.seed, anomaly_multiplier=req.anomaly_multiplier, lp_coverage=req.lp_coverage)
-    ds_dir = storage.dataset_dir(ds_id)
-    ds_dir.mkdir(parents=True, exist_ok=True)
-    out = synth.generate_to_disk(ds_dir, p, lambda f, m: on_progress(f * 0.45, m), check_cancelled)
-    check_cancelled()
-    name = req.name or f"Synthetic {req.n_stores} stores x {req.n_skus} SKUs x {req.n_days} days (seed {req.seed})"
-    return finalize(
-        ds_id, name, "synthetic", out["stores"], out["skus"], out["dates"], out["lp_flags"],
-        params=req.model_dump(), detection=None, warnings=[],
-        on_progress=lambda f, m: on_progress(0.45 + 0.5 * f, m),
-    )

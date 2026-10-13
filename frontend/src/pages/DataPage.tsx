@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { ConnectorsCard } from "../components/ConnectorsCard";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
 import { HistogramChart, MetricBarChart } from "../components/Charts";
@@ -10,87 +11,9 @@ import { NextStep, TechnicalDetails } from "../components/TechnicalDetails";
 import type { DatasetMeta, ExportStatus, PreviewResponse, PreviewTable } from "../types";
 import { estimateSeconds, featureLabel, fmtBytes, fmtDate, fmtDuration, gbp, num, titleCase } from "../utils";
 
-function Range({ label, value, min, max, step = 1, onChange, help }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; help?: string }) {
-  return (
-    <label className="field">
-      <span>
-        {label} {help ? <Help text={help} /> : null}
-      </span>
-      <div className="range-row">
-        <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} aria-label={label} />
-        <input type="number" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} aria-label={`${label} value`} />
-      </div>
-    </label>
-  );
-}
-
-function GenerateCard() {
-  const { config, watchJob, jobs, toast, cancelJob } = useApp();
-  const [stores, setStores] = useState(config.default_stores);
-  const [skus, setSkus] = useState(config.default_skus);
-  const [days, setDays] = useState(config.default_days);
-  const [level, setLevel] = useState(1);
-  const [lp, setLp] = useState(0.4);
-  const [seed, setSeed] = useState(42);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    setStores(config.default_stores);
-    setSkus(config.default_skus);
-    setDays(config.default_days);
-  }, [config.default_stores, config.default_skus, config.default_days]);
-  const rows = stores * skus * days;
-  const tooSmall = rows < config.min_rows;
-  const tooBig = rows > config.max_rows;
-  const est = estimateSeconds("generate", { rows }, config.timing);
-  const job = jobId ? jobs[jobId] ?? null : null;
-  const go = async () => {
-    setBusy(true);
-    try {
-      const j = await api.datasets.generate({ n_stores: stores, n_skus: skus, n_days: days, seed, anomaly_multiplier: level, lp_coverage: lp });
-      watchJob(j);
-      setJobId(j.job_id);
-    } catch (e) {
-      toast(errorMessage(e), "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="card">
-      <div className="card-title">
-        <h2>Generate realistic data</h2>
-        <span className="chip primary">{num.format(rows)} rows</span>
-      </div>
-      <p className="muted small">
-        A retailer's daily stock records: counts, deliveries, sales, returns, transfers and till behaviour for every SKU in every store, with seven kinds of problem hidden inside and an answer key kept aside to mark the homework.
-      </p>
-      <div className="stack" style={{ gap: 10 }}>
-        <Range label="Stores" value={stores} min={5} max={200} onChange={setStores} />
-        <Range label="SKUs per store" value={skus} min={20} max={1000} step={10} onChange={setSkus} />
-        <Range label="Days of history" value={days} min={60} max={365} onChange={setDays} help="The last 28% of days are held back as the exam for the models." />
-        <Range label="How many problems" value={level} min={0.25} max={3} step={0.25} onChange={setLevel} help="1 = about 0.6% of store-SKU-days are part of an injected incident." />
-        <Range label="Share flagged by loss prevention" value={lp} min={0} max={1} step={0.05} onChange={setLp} help="Past flags are partial and noisy, like the real thing: by default 40% of thefts and 20% of other problems were ever flagged." />
-        <TechnicalDetails title="Technical details">
-          <label className="field" style={{ maxWidth: 200 }}>
-            Random seed
-            <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
-          </label>
-          <p className="small muted">
-            Same seed and size give the same data. Generated in blocks of 10 stores straight into a memory-mapped column store, so 5 million rows need well under 3 GB of memory. Allowed size: {num.format(config.min_rows)} to {num.format(config.max_rows)} rows.
-          </p>
-        </TechnicalDetails>
-        {tooSmall || tooBig ? <div className="alert warn small">{tooSmall ? `At least ${num.format(config.min_rows)} rows are needed for a meaningful showcase.` : `At most ${num.format(config.max_rows)} rows on a laptop.`}</div> : null}
-        <div className="row">
-          <button className="btn primary" disabled={busy || tooSmall || tooBig || (job !== null && !["done", "failed", "cancelled"].includes(job.status))} onClick={go}>
-            {busy ? <Spinner /> : null} Generate {num.format(rows)} rows
-          </button>
-          <span className="small muted">takes {fmtDuration(est)}</span>
-        </div>
-        {job ? <JobProgress job={job} onCancel={cancelJob} /> : null}
-      </div>
-    </div>
-  );
+function sourceLabel(d: DatasetMeta): string {
+  if (d.kind === "connector") return `snapshot of ${String(d.params?.connector_name ?? "a vendor")}`;
+  return d.kind === "synthetic" ? "synthetic (legacy)" : "imported";
 }
 
 function ImportCard() {
@@ -132,10 +55,10 @@ function ImportCard() {
   return (
     <div className="card">
       <div className="card-title">
-        <h2>Import your data</h2>
+        <h2>Manual import</h2>
       </div>
       <p className="muted small">
-        One CSV with a row per store, SKU and day (date, store, SKU, counted stock, and expected stock or opening + received + sold), or a ZIP exported from this app. Extra columns such as deliveries, returns, voids or after-hours scans make detection sharper.
+        No connector yet? One CSV with a row per store, SKU and day (date, store, SKU, counted stock, and expected stock or opening + received + sold), or a ZIP exported from this app. Extra columns such as deliveries, returns, voids or after-hours scans make detection sharper.
       </p>
       <div className="stack" style={{ gap: 10 }}>
         <label className={`dropzone ${over ? "over" : ""}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
@@ -220,7 +143,7 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
         <StatCard label="Store-SKU-days" value={num.format(ds.n_rows)} sub={`${ds.n_stores} stores x ${num.format(ds.n_skus)} SKUs x ${ds.n_days} days`} />
         <StatCard label="Dates" value={`${ds.n_days} days`} sub={`${ds.date_start} to ${ds.date_end}; exam from ${ds.test_from_date}`} />
         <StatCard label="Net stock gap" value={st ? gbp.format(st.net_variance_value_gbp) : "–"} sub={st ? `${num.format(st.net_variance_units)} units missing at cost, all days` : ""} />
-        <StatCard label={ds.has_truth ? "Hidden problems" : "Loss-prevention flags"} value={ds.has_truth ? num.format(ds.n_incidents) : num.format(ds.n_lp_flags)} sub={ds.has_truth ? `incidents in the answer key · ${num.format(ds.n_lp_flags)} ever flagged by loss prevention` : "past incidents recorded"} />
+        <StatCard label={ds.has_truth ? "Known problems (demo)" : "Loss-prevention flags"} value={ds.has_truth ? num.format(ds.n_incidents) : num.format(ds.n_lp_flags)} sub={ds.has_truth ? `incidents in the demo vendor's answer key · ${num.format(ds.n_lp_flags)} flagged by loss prevention` : "past incidents recorded"} />
       </div>
       <div className="grid grid-2">
         <div className="card">
@@ -243,7 +166,7 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
           <div className="row" style={{ gap: 8 }}>
             {ds.has_truth && table === "daily" ? (
               <label className="check small">
-                <input type="checkbox" checked={answerKey} onChange={(e) => setAnswerKey(e.target.checked)} /> show the answer key
+                <input type="checkbox" checked={answerKey} onChange={(e) => setAnswerKey(e.target.checked)} /> show the demo answer key
               </label>
             ) : null}
             {table !== "daily" ? (
@@ -265,7 +188,7 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
             <DataTable columns={preview.columns} rows={preview.rows} plainHeaders stickyFirst maxHeight={360} highlight={["truth_type"]} />
             <div className="small muted" style={{ marginTop: 6 }}>
               Showing {preview.rows.length} of {num.format(preview.total_rows)} rows.
-              {answerKey ? " The answer key is never shown to the models; it is only used to mark their homework." : ""}
+              {answerKey ? " Only a simulated vendor has an answer key. It is never shown to the models; it is only used to mark their homework." : ""}
             </div>
           </>
         ) : (
@@ -325,7 +248,7 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
                   <tr key={c.name}>
                     <td className="mono">{c.name}</td>
                     <td>{c.label ?? featureLabel(c.name)}</td>
-                    <td>{c.role === "ground_truth" ? "answer key (never a model input)" : c.role === "feature" ? "detection feature" : c.role}</td>
+                    <td>{c.role === "ground_truth" ? "demo answer key (never a model input)" : c.role === "feature" ? "detection feature" : c.role}</td>
                     <td className="num">{s ? s.mean.toFixed(2) : ""}</td>
                     <td className="num">{s ? num.format(s.p95) : ""}</td>
                     <td className="num">{s ? num.format(s.max) : ""}</td>
@@ -351,7 +274,12 @@ function DatasetDetail({ ds }: { ds: DatasetMeta }) {
           Id {ds.id} · created {fmtDate(ds.created_at)} · {fmtBytes(ds.size_bytes)} on disk · {num.format(ds.n_series)} store-SKU series
         </div>
       </TechnicalDetails>
-      <NextStep title="Next: train the detectors" description="Four methods learn what normal looks like from the history and are marked on the last four weeks." cta="Go to Train →" onClick={() => setPage("train")} />
+      {ds.kind === "connector" ? (
+        <div className="small muted">
+          Snapshot of {String(ds.params?.connector_name ?? "the vendor")} ({String(ds.params?.window_start ?? ds.date_start)} to {String(ds.params?.synced_through ?? ds.date_end)}), synced {fmtDate(String(ds.params?.synced_at ?? ds.created_at))}. Each sync makes a new snapshot; team feedback carries over between them.
+        </div>
+      ) : null}
+      <NextStep title="Next: train the detectors" description="Four methods learn what normal looks like from this vendor's own history and are marked on the last four weeks." cta="Go to Train →" onClick={() => setPage("train")} />
     </div>
   );
 }
@@ -364,12 +292,12 @@ export function DataPage() {
       <div className="page-header">
         <div>
           <h1>1 · Data</h1>
-          <p>Daily stock records for every SKU in every store: what the books expect, what was counted, what moved, and how the tills behaved.</p>
+          <p>Daily stock records for every SKU in every store, read from your inventory system: what the books expect, what was counted, what moved, and how the tills behaved.</p>
         </div>
       </div>
       <div className="grid grid-side">
         <div className="stack">
-          <GenerateCard />
+          <ConnectorsCard />
           <ImportCard />
           {datasets.length ? (
             <div className="card">
@@ -382,7 +310,7 @@ export function DataPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="title">{d.name}</div>
                       <div className="meta">
-                        {num.format(d.n_rows)} rows · {d.kind === "synthetic" ? "synthetic" : "imported"} · {fmtDate(d.created_at)}
+                        {num.format(d.n_rows)} rows · {sourceLabel(d)} · {fmtDate(d.created_at)}
                       </div>
                     </div>
                   </div>
@@ -398,7 +326,7 @@ export function DataPage() {
             <div className="card">
               <EmptyState art={<DataInArt />}>
                 <b>No data yet.</b>
-                <div className="muted">Generate the 5-million-row showcase dataset (about a minute) or import your own daily counts.</div>
+                <div className="muted">Connect your inventory system (or the bundled demo vendor) and press Sync now, or import a CSV of daily counts.</div>
               </EmptyState>
             </div>
           )}

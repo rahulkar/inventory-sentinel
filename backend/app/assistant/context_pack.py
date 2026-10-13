@@ -13,9 +13,10 @@ from app.services import jobs, storage, triage
 PAGE_BLURBS = {
     "overview": "Overview: the three steps (Data, Train, Act), latest detection KPIs and the top alerts.",
     "story": "How it works: the leadership story with live figures (Present mode).",
-    "data": "Data: generate synthetic inventory data or import real data; preview daily rows, stores, SKUs and loss-prevention flags.",
-    "train": "Train: pick detection methods, train them on history and compare how well each finds the injected problems.",
-    "act": "Act: Alerts, Dashboard, Investigation planner, Drill-down and Triage tabs for a detection run.",
+    "data": "Data: vendor connectors (MCP URL + token, test, sync now, last sync and warnings) and manual CSV import; preview the snapshots' daily rows, stores, SKUs and loss-prevention flags.",
+    "schedules": "Schedules: timed pipelines (sync a vendor, use or retrain a model of the user's choice, detect, propose vendor tasks), their run history and the vendor-task approvals waiting from scheduled runs.",
+    "train": "Train: pick detection methods, train them on the vendor's own history and compare how well each finds real problems (loss-prevention flags, team feedback, or a demo vendor's answer key).",
+    "act": "Act: Alerts, Dashboard, Investigation planner, Drill-down (with the alert's SOP checklist and 'Raise vendor task' buttons) and Triage tabs for a detection run.",
     "models": "Models: every trained model with metrics, thresholds, drivers and export (bundle / ONNX).",
     "experiments": "Experiments: every training run with its leaderboard.",
     "assistant": "Assistant: the full chat page with conversations and the team's usage and cost.",
@@ -38,6 +39,7 @@ class UiState(BaseModel):
     drill_store_id: str | None = None
     drill_sku_id: str | None = None
     active_model_id: str | None = None
+    selected_schedule_id: str | None = None
 
 
 def _m(m: Any) -> dict[str, Any]:
@@ -66,7 +68,8 @@ def build_context_pack(ui: UiState, session_id: str | None) -> dict[str, Any]:
         "tab": ui.tab,
         "datasets": [
             {"dataset_id": d.id, "name": d.name, "kind": d.kind, "rows": d.n_rows, "stores": d.n_stores, "skus": d.n_skus, "days": d.n_days,
-             "dates": f"{d.date_start} to {d.date_end}", "evaluation_window_from": d.test_from_date, "answer_key": d.has_truth, "lp_flags": d.n_lp_flags, "injected_incidents": d.n_incidents}
+             "dates": f"{d.date_start} to {d.date_end}", "evaluation_window_from": d.test_from_date, "answer_key": d.has_truth, "lp_flags": d.n_lp_flags, "injected_incidents": d.n_incidents,
+             "connector": (d.params or {}).get("connector_name")}
             for d in datasets[:5]
         ],
         "selected_dataset_id": sel_ds.id if sel_ds else None,
@@ -109,8 +112,34 @@ def build_context_pack(ui: UiState, session_id: str | None) -> dict[str, Any]:
 
     pack["proposals"] = [{"proposal_id": p.proposal_id, "title": p.title, "status": p.status, "job_id": p.job_id} for p in proposals.list_for_session(session_id, limit=5)] if session_id else []
     pack["planner_defaults"] = config.PLANNER_DEFAULTS
-    pack["limits"] = {"min_rows": config.MIN_ROWS, "max_rows": config.MAX_ROWS, "default_stores": config.DEFAULT_STORES, "default_skus": config.DEFAULT_SKUS, "default_days": config.DEFAULT_DAYS}
+    pack.update(_ops(ui))
     return pack
+
+
+def _ops(ui: UiState) -> dict[str, Any]:
+    """Connectors, schedules and approvals waiting (never tokens)."""
+    from app.assistant import proposals
+    from app.services import connectors, scheduler, vendor_tasks
+
+    out: dict[str, Any] = {"connectors": [], "schedules": []}
+    for c in connectors.list_all()[:5]:
+        caps = c.capabilities or {}
+        last = c.last_sync
+        out["connectors"].append({
+            "connector_id": c.id, "name": c.name, "enabled": c.enabled, "vendor": (caps.get("vendor") or {}).get("name"),
+            "last_sync": f"{last.status} at {last.at}" + (f", data through {last.synced_through}" if last.synced_through else "") + (f", error: {last.error}" if last.error else "") if last else "never synced",
+            "warnings": (last.warnings if last else [])[:2], "answer_key": bool((caps.get("features") or {}).get("answer_key")), "open_vendor_tasks": vendor_tasks.open_count(c.id),
+        })
+    for sc in scheduler.list_all()[:6]:
+        lr = sc.last_run or {}
+        out["schedules"].append({
+            "schedule_id": sc.id, "name": sc.name, "enabled": sc.enabled, "summary": scheduler.describe(sc), "next_run_at_utc": sc.next_run_at,
+            "last_run": f"{lr.get('status')} ({lr.get('trigger')}) at {lr.get('finished_at') or lr.get('started_at')}" + (f", {lr.get('new_alerts')} new alerts" if lr.get("new_alerts") is not None else "") + (f", error: {lr.get('error')}" if lr.get("error") else "") if lr else "never ran",
+        })
+    out["scheduler_approvals_waiting"] = [{"proposal_id": p.proposal_id, "title": p.title} for p in proposals.list_pending(source="scheduler", limit=5)]
+    if ui.selected_schedule_id:
+        out["selected_schedule_id"] = ui.selected_schedule_id
+    return out
 
 
 def render_context_pack(p: dict[str, Any]) -> str:
@@ -118,9 +147,22 @@ def render_context_pack(p: dict[str, Any]) -> str:
     if p["datasets"]:
         lines.append("Datasets:")
         for d in p["datasets"]:
-            lines.append(f"  - {d['dataset_id']} '{d['name']}': {d['rows']:,} rows ({d['stores']} stores x {d['skus']} SKUs x {d['days']} days, {d['dates']}), evaluation window from {d['evaluation_window_from']}, answer key: {'yes (synthetic)' if d['answer_key'] else 'no'}, {d['lp_flags']} loss-prevention flags")
+            src = f"snapshot of {d['connector']}" if d.get("connector") else d["kind"]
+            lines.append(f"  - {d['dataset_id']} '{d['name']}' ({src}): {d['rows']:,} rows ({d['stores']} stores x {d['skus']} SKUs x {d['days']} days, {d['dates']}), evaluation window from {d['evaluation_window_from']}, answer key: {('yes (demo vendor)' if d['kind'] == 'connector' else 'yes (synthetic)') if d['answer_key'] else 'no'}, {d['lp_flags']} loss-prevention flags")
     else:
-        lines.append("Datasets: none yet (propose generating one).")
+        lines.append("Datasets: none yet (propose a sync of a vendor connector, or import a CSV on the Data page).")
+    if p.get("connectors"):
+        lines.append("Vendor connectors (MCP):")
+        for c in p["connectors"]:
+            lines.append(f"  - {c['connector_id']} '{c['name']}'{'' if c['enabled'] else ' [OFF]'}: last sync {c['last_sync']}; {c['open_vendor_tasks']} open vendor tasks" + (f"; warnings: {' | '.join(c['warnings'])}" if c["warnings"] else ""))
+    else:
+        lines.append("Vendor connectors: none (the user adds one on the Data page).")
+    if p.get("schedules"):
+        lines.append("Schedules:")
+        for sc in p["schedules"]:
+            lines.append(f"  - {sc['schedule_id']} '{sc['name']}'{'' if sc['enabled'] else ' [paused]'}: {sc['summary']}; next {sc['next_run_at_utc']} UTC; last run {sc['last_run']}")
+    if p.get("scheduler_approvals_waiting"):
+        lines.append("Waiting for approval from scheduled runs: " + "; ".join(f"{x['proposal_id']} {x['title']}" for x in p["scheduler_approvals_waiting"]))
     if p["models"]:
         lines.append("Models (best average precision first; baseline = rule of thumb):")
         for m in p["models"]:
@@ -138,7 +180,7 @@ def render_context_pack(p: dict[str, Any]) -> str:
     s = p.get("selected_run")
     if s:
         ev = s.get("evaluation") or {}
-        lines.append(f"Selected run {s['run_id']}: severity {s['by_severity']}, likely types {s['by_type']}, {s['stores_affected']} stores affected" + (f"; on the evaluation window it caught {ev.get('incident_recall') or 0:.0%} of injected incidents with {ev.get('alert_precision') or 0:.0%} of alerts real (synthetic answer key)" if ev else "") + ".")
+        lines.append(f"Selected run {s['run_id']}: severity {s['by_severity']}, likely types {s['by_type']}, {s['stores_affected']} stores affected" + (f"; on the evaluation window it caught {ev.get('incident_recall') or 0:.0%} of injected incidents with {ev.get('alert_precision') or 0:.0%} of alerts real (demo vendor's answer key)" if ev else "") + ".")
         if s.get("top_stores"):
             lines.append("  Top stores by £ at risk: " + "; ".join(f"{x['label']} £{x['value_gbp']:,.0f} ({x['alerts']} alerts)" for x in s["top_stores"]))
     t = p.get("triage")

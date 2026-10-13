@@ -5,46 +5,24 @@ system computes. Every evening the stock is counted (RFID-style) and the count r
 the daily variance `expected_closing - counted_closing` is the shrinkage signal the detectors look at.
 
 Anomalies are planned per block of stores as small event tables and applied inside the day loop. The answer key
-(`truth_type`, `truth_incident`, `truth_loss_units`) is written next to the data but is never a model feature.
+(`truth_type`, `truth_incident`, `truth_loss_units`) stays inside the demo vendor; Sentinel may read it only to score
+itself, never as a model feature.
 Hard negatives (promotions, delivery-day noise, new lines, stock-scaled count noise, background shrink) make a naive
 rule of thumb raise false alarms that the learned methods avoid.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Iterator
 
 import numpy as np
 import pandas as pd
 
-from app import config
-from app.services import colstore
+from vendor_mock.sim import constants as config
+from vendor_mock.sim.constants import DAILY_SPECS, TRUTH_SPECS
 
 TYPE_CODE = {name: i for i, name in enumerate(config.ANOMALY_TYPES)}
-
-DAILY_SPECS: dict[str, Any] = {
-    "date_idx": np.int16,
-    "store_code": np.int16,
-    "sku_code": np.int16,
-    "opening_stock": np.int32,
-    "received_units": np.int16,
-    "sold_units": np.int16,
-    "returned_units": np.int16,
-    "transfer_in_units": np.int16,
-    "transfer_out_units": np.int16,
-    "adjustment_units": np.int16,
-    "expected_closing": np.int32,
-    "counted_closing": np.int32,
-    "pos_scans": np.int16,
-    "manual_entry_scans": np.int16,
-    "void_count": np.int16,
-    "override_count": np.int16,
-    "after_hours_scans": np.int16,
-    "receiving_scans": np.int16,
-    "on_promo": np.int8,
-}
-TRUTH_SPECS: dict[str, Any] = {"truth_type": np.int8, "truth_incident": np.int32, "truth_loss_units": np.int16}
+__all__ = ["DAILY_SPECS", "TRUTH_SPECS", "GenParams", "make_stores", "make_skus", "simulate_block", "make_lp_flags", "generate_blocks"]
 
 # incidents per 1M rows (scaled by size and anomaly_multiplier)
 RATES = {
@@ -66,14 +44,11 @@ class GenParams:
     seed: int = 42
     anomaly_multiplier: float = 1.0
     lp_coverage: float = 0.4
+    start_date: str = "2026-06-01"
 
     @property
     def n_rows(self) -> int:
         return self.n_stores * self.n_skus * self.n_days
-
-    @property
-    def test_from_idx(self) -> int:
-        return int(round(self.n_days * (1 - config.TEST_WINDOW_SHARE)))
 
 
 # ---------------------------------------------------------------- dimension tables
@@ -289,7 +264,7 @@ def simulate_block(p: GenParams, stores: pd.DataFrame, skus: pd.DataFrame, store
     deliveries = np.zeros((len(stores), 7), dtype=bool)
     for i in range(len(stores)):
         deliveries[i, rng.choice(7, size=2, replace=False)] = True
-    start_weekday = pd.Timestamp(config.SYN_START).weekday()
+    start_weekday = pd.Timestamp(p.start_date).weekday()
     dows = (start_weekday + np.arange(T)) % 7
     dow_factor = np.array([0.85, 0.85, 0.9, 0.95, 1.1, 1.35, 1.2])  # Mon..Sun
     trend = 1 + 0.15 * np.sin(np.linspace(0, 2.3, T))
@@ -446,8 +421,9 @@ _LP_SOURCE = {"theft": ["cctv_review", "stock_audit", "hotline"], "counting_erro
 
 
 def make_lp_flags(p: GenParams, daily: dict[str, np.ndarray], truth: dict[str, np.ndarray], stores: pd.DataFrame, skus: pd.DataFrame, dates: np.ndarray, rng: np.random.Generator) -> pd.DataFrame:
+    """Flags raised by the loss-prevention team, each reported 2-10 days after the day it concerns (`reported_idx`)."""
     inc = truth["truth_incident"]
-    hist = daily["date_idx"] < p.test_from_idx
+    hist = np.ones(len(inc), dtype=bool)
     sel = (inc > 0) & hist
     idx = np.flatnonzero(sel)
     if len(idx):
@@ -478,6 +454,7 @@ def make_lp_flags(p: GenParams, daily: dict[str, np.ndarray], truth: dict[str, n
             ftype = str(rng.choice(config.LP_FLAG_TYPES, p=[0.5, 0.25, 0.15, 0.10]))
             rows.append((int(daily["date_idx"][r]), int(daily["store_code"][r]), int(daily["sku_code"][r]), ftype, str(rng.choice(_LP_SOURCE[ftype])), bool(rng.random() < 0.3), round(float(var[r]) * float(unit_cost[daily["sku_code"][r]]), 2)))
     df = pd.DataFrame(rows, columns=["date_idx", "store_code", "sku_code", "flag_type", "source", "confirmed", "loss_value_gbp"])
+    df["reported_idx"] = df["date_idx"] + rng.integers(2, 11, len(df))
     df = df.sort_values(["date_idx", "store_code", "sku_code"]).reset_index(drop=True)
     df.insert(0, "flag_id", [f"LP{i + 1:05d}" for i in range(len(df))])
     df.insert(1, "date", dates[df["date_idx"].to_numpy()] if len(df) else [])
@@ -486,34 +463,18 @@ def make_lp_flags(p: GenParams, daily: dict[str, np.ndarray], truth: dict[str, n
     return df
 
 
-# ---------------------------------------------------------------- whole dataset to disk
-def generate_to_disk(ds_dir: Path, p: GenParams, on_progress: Callable[[float, str], None] | None = None, check_cancelled: Callable[[], None] | None = None) -> dict[str, Any]:
+# ---------------------------------------------------------------- whole estate, block by block
+def generate_blocks(p: GenParams) -> Iterator[tuple[str, Any]]:
+    """Yield ("dims", (stores, skus, dates)), then ("block", (lo, hi, daily, truth)) per block of stores.
+
+    Hidden simulator columns (_hotspot, _popularity, _new_line) stay on the yielded frames; drop them before storing."""
     rng = np.random.default_rng([p.seed, 0])
     stores = make_stores(p, rng)
     skus = make_skus(p, rng)
-    dates = pd.date_range(config.SYN_START, periods=p.n_days, freq="D").strftime("%Y-%m-%d").to_numpy()
-    n = p.n_rows
-    daily_mm = colstore.preallocate(ds_dir / "daily", {k: (np.dtype(v), n) for k, v in DAILY_SPECS.items()})
-    truth_mm = colstore.preallocate(ds_dir / "truth", {k: (np.dtype(v), n) for k, v in TRUTH_SPECS.items()})
+    dates = pd.date_range(p.start_date, periods=p.n_days, freq="D").strftime("%Y-%m-%d").to_numpy()
+    yield "dims", (stores, skus, dates)
     incident = 0
-    block = config.GEN_BLOCK_STORES
-    rows_per_store = p.n_skus * p.n_days
-    for b, lo in enumerate(range(0, p.n_stores, block)):
-        if check_cancelled:
-            check_cancelled()
-        hi = min(p.n_stores, lo + block)
-        brng = np.random.default_rng([p.seed, b + 1])
-        daily, truth, incident = simulate_block(p, stores, skus, lo, hi, brng, incident)
-        a, z = lo * rows_per_store, hi * rows_per_store
-        for k, v in daily.items():
-            daily_mm[k][a:z] = v
-        for k, v in truth.items():
-            truth_mm[k][a:z] = v
-        if on_progress:
-            on_progress(hi / p.n_stores, f"Simulated {hi} of {p.n_stores} stores")
-    colstore.flush(daily_mm)
-    colstore.flush(truth_mm)
-    daily_r = colstore.open_columns(ds_dir / "daily")
-    truth_r = colstore.open_columns(ds_dir / "truth")
-    lp = make_lp_flags(p, daily_r, truth_r, stores, skus, dates, np.random.default_rng([p.seed, 999]))
-    return {"stores": stores.drop(columns=["_hotspot"]), "skus": skus.drop(columns=["_popularity", "_new_line"]), "dates": dates, "lp_flags": lp, "n_incidents": int(incident)}
+    for b, lo in enumerate(range(0, p.n_stores, config.GEN_BLOCK_STORES)):
+        hi = min(p.n_stores, lo + config.GEN_BLOCK_STORES)
+        daily, truth, incident = simulate_block(p, stores, skus, lo, hi, np.random.default_rng([p.seed, b + 1]), incident)
+        yield "block", (lo, hi, daily, truth)

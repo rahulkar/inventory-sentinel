@@ -10,6 +10,7 @@ import { ExperimentsPage } from "./pages/ExperimentsPage";
 import { StoryPage } from "./pages/StoryPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SchedulesPage } from "./pages/SchedulesPage";
 import { ExecutivePage } from "./pages/ExecutivePage";
 import { ExecAlertsPage, ExecPlanPage } from "./pages/ExecPages";
 
@@ -28,6 +29,8 @@ function Router() {
       return <TrainPage />;
     case "act":
       return <ActPage />;
+    case "schedules":
+      return <SchedulesPage />;
     case "models":
       return <ModelsPage />;
     case "experiments":

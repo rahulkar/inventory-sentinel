@@ -24,7 +24,7 @@ def _daily_frame(ds: storage.Dataset, a: int, b: int) -> pd.DataFrame:
         "store_id": ds.stores["store_id"].to_numpy()[d["store_code"].astype(np.int64)],
         "sku_id": ds.skus["sku_id"].to_numpy()[d["sku_code"].astype(np.int64)],
     })
-    from app.services.synth import DAILY_SPECS
+    from app.services.schema_spec import DAILY_SPECS
 
     # business order (stock flow, then till behaviour) rather than the column store's alphabetical file order
     order = [k for k in DAILY_SPECS if k in d] + sorted(k for k in d if k not in DAILY_SPECS)
@@ -73,7 +73,7 @@ def export(ds_id: str, ctx: jobs.JobContext) -> dict[str, Any]:
                 "format": FORMAT, "version": 1, "name": ds.meta.name, "created_at": ds.meta.created_at, "kind": ds.meta.kind,
                 "n_rows": n, "n_stores": ds.meta.n_stores, "n_skus": ds.meta.n_skus, "n_days": ds.meta.n_days,
                 "date_start": ds.meta.date_start, "date_end": ds.meta.date_end, "params": ds.meta.params,
-                "files": {"daily.csv": "one row per store, SKU and day", "stores.csv": "store details", "skus.csv": "SKU details incl. category and unit cost", "lp_flags.csv": "past loss-prevention flags (partial, noisy)", "answer_key.csv": "synthetic only: the injected anomalies (never used as a model input)"},
+                "files": {"daily.csv": "one row per store, SKU and day", "stores.csv": "store details", "skus.csv": "SKU details incl. category and unit cost", "lp_flags.csv": "past loss-prevention flags (partial, noisy)", "answer_key.csv": "demo vendor only: the injected anomalies (never used as a model input)"},
             }, indent=1))
         os.replace(tmp, out)
     except BaseException:

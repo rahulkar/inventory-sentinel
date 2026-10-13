@@ -1,6 +1,6 @@
 """Shared background job runner: one worker thread, FIFO queue, polled progress.
 
-Every heavy operation (generate, upload, train, detect, retrain, export) is submitted here. Running one job at
+Every heavy operation (upload, sync, scheduled pipeline, train, detect, retrain, export) is submitted here. Running one job at
 a time keeps memory bounded on a laptop and makes progress and ETAs meaningful.
 """
 from __future__ import annotations
@@ -83,6 +83,31 @@ class JobContext:
             cancelled = self.job_id in _cancel_flags
         if cancelled:
             raise JobCancelled()
+
+
+class ScopedContext:
+    """Runs a sub-task inside a parent job: its 0-100% maps onto [lo, hi] and its step keys get a prefix.
+
+    The scheduled pipeline (sync -> train -> detect) is one job, so it cancels as a unit and shows one row."""
+
+    def __init__(self, parent: "JobContext | ScopedContext", lo: float, hi: float, prefix: str = "") -> None:
+        self.parent, self.lo, self.hi, self.prefix = parent, lo, hi, prefix
+        self.job_id = parent.job_id
+
+    def step(self, key: str, label: str) -> None:
+        self.parent.step(f"{self.prefix}{key}", label)
+
+    def progress(self, percent: float, message: str | None = None) -> None:
+        self.parent.progress(self.lo + (self.hi - self.lo) * max(0.0, min(100.0, percent)) / 100.0, message)
+
+    def warn(self, text: str) -> None:
+        self.parent.warn(text)
+
+    def detail(self, payload: dict[str, Any]) -> None:
+        self.parent.detail(payload)
+
+    def check_cancelled(self) -> None:
+        self.parent.check_cancelled()
 
 
 def _refresh_timing(job: Job) -> None:

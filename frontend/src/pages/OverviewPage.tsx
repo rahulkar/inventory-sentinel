@@ -80,7 +80,7 @@ export function OverviewPage() {
           </div>
           <div className="pipeline">
             {[
-              { n: 1, title: "Data", done: hasData, page: "data" as const, desc: hasData ? `${num.format(datasets[0].n_rows)} store-SKU-days ready in “${datasets[0].name}”.` : "Generate 5 million realistic store-SKU-days with hidden problems, or import your own counts." },
+              { n: 1, title: "Data", done: hasData, page: "data" as const, desc: hasData ? `${num.format(datasets[0].n_rows)} store-SKU-days ready in “${datasets[0].name}”.` : "Connect your inventory system over MCP (or the bundled demo vendor) and sync, or import a CSV of daily counts." },
               { n: 2, title: "Train", done: hasModel, page: "train" as const, desc: hasModel ? `${num.format(models.length)} models trained${best ? `; best is ${best.label}` : ""}.` : "Four methods compete on history; the exam is the last four weeks." },
               { n: 3, title: "Act", done: hasRun, page: "act" as const, desc: hasRun ? "Alerts, dashboard, investigation planner, drill-down and triage." : "Score every day, get alerts with reasons, plan investigator time." },
             ].map((s) => (

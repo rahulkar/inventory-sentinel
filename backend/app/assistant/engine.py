@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import time
 import traceback
@@ -276,14 +277,17 @@ class AssistantEngine:
                 "ui:drill_store_id": req.ui.drill_store_id,
                 "ui:drill_sku_id": req.ui.drill_sku_id,
                 "ui:active_model_id": req.ui.active_model_id,
+                "ui:selected_schedule_id": req.ui.selected_schedule_id,
                 "ui:session_id": sid,
             }
             run_config = RunConfig(streaming_mode=StreamingMode.SSE if s.streaming else StreamingMode.NONE, max_llm_calls=config.ASSISTANT_MAX_LLM_CALLS)
             new_message = types.Content(role="user", parts=[types.Part(text=req.message)])
             streamed: dict[str, Any] = {"__sid__": sid, "__turn__": storage.new_id("turn")}
             try:
+                # older google-adk releases have no abort_signal; the loop below still stops on abort
+                extra = {"abort_signal": abort} if "abort_signal" in inspect.signature(runner.run_async).parameters else {}
                 async with asyncio.timeout(s.timeout_s + 10):
-                    async for event in runner.run_async(user_id=USER_ID, session_id=sid, new_message=new_message, state_delta=state_delta, run_config=run_config, abort_signal=abort):
+                    async for event in runner.run_async(user_id=USER_ID, session_id=sid, new_message=new_message, state_delta=state_delta, run_config=run_config, **extra):
                         for out in self._map_event(event, streamed):
                             yield out
                         if abort.is_set():

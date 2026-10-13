@@ -167,7 +167,7 @@ export const TYPE_HELP: Record<string, string> = {
 
 export const SEVERITY_LABEL: Record<string, string> = { critical: "Critical", high: "High", medium: "Medium" };
 export const OUTCOME_LABEL: Record<string, string> = { confirmed_theft: "Confirmed theft", counting_error: "Counting error", process_issue: "Process issue", false_alarm: "False alarm", open: "Open" };
-export const SOURCE_LABEL: Record<string, string> = { ground_truth: "synthetic answer key", lp_flags: "loss-prevention flags", triage: "your team's decisions", prior: "an assumption (no labels yet)", none: "no labels" };
+export const SOURCE_LABEL: Record<string, string> = { ground_truth: "the demo vendor's answer key", lp_flags: "loss-prevention flags", triage: "your team's decisions", prior: "an assumption (no labels yet)", none: "no labels" };
 
 export const plain = {
   ap: (v: number | null | undefined) => (v === null || v === undefined ? "not measured" : `average precision ${v.toFixed(2)}`),
@@ -178,12 +178,12 @@ export const plain = {
 };
 
 // ---------------------------------------------------------------- estimates
-export function estimateSeconds(kind: "generate" | "train" | "detect" | "export", opts: { rows?: number; modelKeys?: string[]; sample?: number; scorePer1m?: number }, timing: Record<string, number> | undefined): number {
+export function estimateSeconds(kind: "sync" | "train" | "detect" | "export", opts: { rows?: number; modelKeys?: string[]; sample?: number; scorePer1m?: number }, timing: Record<string, number> | undefined): number {
   const t = timing ?? {};
   const rows = opts.rows ?? 0;
   switch (kind) {
-    case "generate":
-      return 3 + (t.generate_s_per_1m ?? 9) * (rows / 1e6);
+    case "sync":
+      return 10 + (t.sync_s_per_1m ?? 25) * (Math.max(rows, 1e6) / 1e6);
     case "train":
       return 5 + (opts.modelKeys ?? []).reduce((acc, k) => acc + (t[`model_${k}_fit_s`] ?? 5) * ((opts.sample ?? 200_000) / 200_000) + (t[`model_${k}_score_s_per_1m`] ?? 10) * 0.5, 0);
     case "detect":
@@ -195,11 +195,7 @@ export function estimateSeconds(kind: "generate" | "train" | "detect" | "export"
 
 export function defaultConfig(): AppConfig {
   return {
-    min_rows: 1_000_000,
     max_rows: 10_000_000,
-    default_stores: 80,
-    default_skus: 500,
-    default_days: 125,
     max_upload_mb: 2048,
     default_train_sample: 200_000,
     quick_train_sample: 100_000,

@@ -1,24 +1,42 @@
 """Internal MCP server exposing the same tool catalogue to external agents (Claude Desktop, other apps)."""
 from __future__ import annotations
 
-from mcp.server.mcpserver import MCPServer
+import functools
+import inspect
+from typing import Any, Callable
 
+import anyio
+
+from app import config
 from app.assistant import knowledge
 from app.assistant import plain_language as pl
 from app.assistant import tools as T
-from app import config
+from app.mcp_compat import http_app, make_server
 
-server = MCPServer(
+server = make_server(
     "inventory-sentinel",
     instructions=(
-        "Tools over the Inventory Sentinel app: inventory datasets, anomaly-detection models, detection runs and alerts, store/SKU drill-downs, "
-        "investigation planning, team triage feedback and the user guide. Jobs (generate, train, detect, retrain, export, activate) are proposals: "
-        "propose_job returns a proposal that the user confirms in the app's chat UI."
+        "Tools over the Inventory Sentinel app: vendor connectors and syncs, inventory datasets, anomaly-detection models, detection runs and alerts, "
+        "store/SKU drill-downs and live vendor stock lookups, investigation planning, team triage feedback, schedules, vendor tasks, SOPs and the user guide. "
+        "Jobs (sync, train, detect, retrain, export, activate, schedules, vendor tasks) are proposals: propose_job returns a proposal that the user "
+        "confirms in the app."
     ),
 )
 
+
+def as_thread_tool(fn: Callable[..., dict[str, Any]]) -> Callable[..., Any]:
+    """MCP calls sync tools on the event loop; run them in a worker thread instead (heavy reads, vendor lookups)."""
+
+    @functools.wraps(fn)
+    async def wrapper(**kwargs: Any) -> dict[str, Any]:
+        return await anyio.to_thread.run_sync(functools.partial(fn, **kwargs))
+
+    wrapper.__signature__ = inspect.signature(fn)  # type: ignore[attr-defined]
+    return wrapper
+
+
 for fn in T.CATALOGUE:
-    server.tool()(fn)
+    server.tool()(as_thread_tool(fn))
 
 
 @server.resource("sentinel://guide")
@@ -48,4 +66,20 @@ def story_resource() -> str:
     return p.read_text(encoding="utf-8") if p and p.exists() else ""
 
 
-mcp_app = server.streamable_http_app(streamable_http_path="/", json_response=True)
+@server.resource("sentinel://sops")
+def sops_resource() -> str:
+    """Index of the standard operating procedures for missing inventory, failed syncs and false alarms."""
+    from app.services import sops
+
+    return "\n".join(f"- {s.id}: {s.title} (v{s.version}) - {s.summary or ''}" for s in sops.list_sops())
+
+
+@server.resource("sentinel://sop/{sop_id}")
+def sop_resource(sop_id: str) -> str:
+    """One standard operating procedure as Markdown (steps, escalation, closure)."""
+    from app.services import sops
+
+    return knowledge.sop_markdown(sops.get(sop_id))
+
+
+mcp_app = http_app(server)

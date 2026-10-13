@@ -1,4 +1,7 @@
-"""Triage decisions from warehouse teams, stored append-only per dataset and keyed by the stable alert key."""
+"""Triage decisions from warehouse teams, stored append-only and keyed by the stable alert key (store|sku|start date).
+
+Decisions live per *feedback scope*: the dataset for imports, the connector for vendor syncs. Each sync makes a new
+snapshot dataset, so keying by connector keeps the team's decisions (and the feedback re-ranker) across snapshots."""
 from __future__ import annotations
 
 import json
@@ -21,8 +24,14 @@ TRUTH_TO_OUTCOME = {
 }
 
 
+def feedback_scope(dataset_id: str) -> str:
+    meta = storage.get_dataset_meta(dataset_id)
+    conn = (meta.params or {}).get("connector_id") if meta is not None else None
+    return storage.check_id(conn) if conn else storage.check_id(dataset_id)
+
+
 def _path(dataset_id: str):
-    return config.TRIAGE_DIR / f"{storage.check_id(dataset_id)}.jsonl"
+    return config.TRIAGE_DIR / f"{feedback_scope(dataset_id)}.jsonl"
 
 
 def all_records(dataset_id: str) -> list[dict[str, Any]]:
@@ -84,13 +93,13 @@ def decide(run_id: str, alert_ids: list[str], outcome: str, note: str | None) ->
 
 
 def simulate(req: SimulateTriageRequest) -> dict[str, Any]:
-    """Synthetic datasets only: review the top open alerts from the history window using the answer key, with noise."""
+    """Demo vendor only: review the top open alerts from the history window using its answer key, with noise."""
     from app.services import storage
 
     rd = storage.load_run(req.run_id)
     ds = storage.load_dataset(rd.run.dataset_id)
     if not ds.truth:
-        raise ValueError("Simulated triage needs the synthetic answer key; review alerts by hand on real data.")
+        raise ValueError("Simulated triage needs a demo vendor's answer key; review alerts by hand (or through vendor tasks) on real data.")
     df = rd.incidents
     done = latest(ds.meta.id)
     hist = df[(df["start_date"] < ds.meta.test_from_date) & (~df["alert_key"].isin(done))]

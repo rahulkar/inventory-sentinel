@@ -3,17 +3,22 @@ setlocal EnableDelayedExpansion
 REM ============================================================
 REM  Inventory Sentinel - one-click init and start (Windows)
 REM  Creates a virtual environment, installs Python and Node
-REM  packages, builds the UI and starts the app on port 8000.
-REM  Usage:  startup.bat [--no-browser] [--port 8000] [--dev]
+REM  packages, builds the UI and starts the app on port 8000,
+REM  plus the demo vendor back-office on port 8020 (a simulated
+REM  retailer system Sentinel connects to over MCP).
+REM  Usage:  startup.bat [--no-browser] [--port 8000] [--dev] [--no-vendor]
 REM ============================================================
 cd /d "%~dp0"
 set PORT=8000
+set VENDOR_PORT=8020
 set OPEN_BROWSER=1
 set DEV=0
+set VENDOR=1
 :args
 if "%~1"=="" goto run
 if /I "%~1"=="--no-browser" set OPEN_BROWSER=0
 if /I "%~1"=="--dev" set DEV=1
+if /I "%~1"=="--no-vendor" set VENDOR=0
 if /I "%~1"=="--port" (set PORT=%~2& shift)
 shift
 goto args
@@ -78,6 +83,12 @@ if not exist "frontend\node_modules" (
   popd
 ) else (
   echo  [3/5] frontend packages found
+)
+
+if "%VENDOR%"=="1" (
+  echo        starting the demo vendor back-office at http://127.0.0.1:%VENDOR_PORT% in a second window - simulated data, the first start seeds it ...
+  start "Demo vendor back-office" cmd /k ""%VPY%" -m uvicorn vendor_mock.app:app --host 127.0.0.1 --port %VENDOR_PORT% --log-level warning"
+  set SENTINEL_DEFAULT_CONNECTOR_URL=http://127.0.0.1:%VENDOR_PORT%/mcp/
 )
 
 if "%DEV%"=="1" goto dev

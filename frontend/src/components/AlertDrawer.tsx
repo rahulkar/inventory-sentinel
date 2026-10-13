@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { SopChecklist } from "./SopChecklist";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
 import type { SeriesResponse } from "../types";
@@ -90,6 +91,12 @@ export function AlertDrawer() {
             ) : (
               <p className="muted">No alerts on this item in the current run.</p>
             )}
+            {alert && runId ? (
+              <div>
+                <h3 style={{ margin: "0 0 4px" }}>What to do</h3>
+                <SopChecklist runId={runId} alertId={alert.alert_id} compact />
+              </div>
+            ) : null}
             <div>
               <h3 style={{ margin: "0 0 4px" }}>Expected against counted stock</h3>
               <SeriesChart points={s.points} height={220} />

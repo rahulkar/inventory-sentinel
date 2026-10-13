@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { SopChecklist } from "./SopChecklist";
 import { api } from "../api";
 import { errorMessage, useApp } from "../context";
 import type { Alert, AlertPage, Outcome } from "../types";
@@ -108,6 +109,8 @@ export function AlertDetail({ runId, alertId, answerKey, onClose, onChanged, sim
         ))}
       </ul>
       <p className="small muted">The pattern is consistent with {TYPE_LABEL[a.likely_type]?.toLowerCase() ?? "a problem"}; an investigation confirms what happened.</p>
+      <h4 className="mt">What to do</h4>
+      <SopChecklist runId={runId} alertId={a.alert_id} compact={simple} />
       <h4 className="mt">Record the outcome</h4>
       <TriageButtons runId={runId} alert={a} onDone={() => { load(); onChanged(); }} />
       <div className="row mt">

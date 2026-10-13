@@ -31,9 +31,7 @@ def start_job(req: DetectRequest) -> Job:
     model_id = resolve_model(req.model_id)
     m = storage.get_model(model_id)
     assert m is not None
-    if m.dataset_id != meta.id:
-        # models trained on one dataset can score another one with the same schema
-        pass
+    check_compatible(meta, m)  # models trained on one dataset can score another one with the same schema
     from app.services import registry
 
     per_1m = m.metrics.score_seconds_per_1m or (registry.REGISTRY[m.key].score_seconds_per_1m if m.key in registry.REGISTRY else 30.0)
@@ -45,6 +43,24 @@ def start_job(req: DetectRequest) -> Job:
         steps=[("load", "Loading model and features"), ("score", f"Scoring {meta.n_rows:,} rows"), ("incidents", "Grouping flagged days into incidents"), ("aggregate", "Building the dashboard"), ("save", "Saving the run")],
         estimate_seconds=round(est, 1),
     )
+
+
+def check_compatible(meta: Any, model: Any) -> None:
+    """A model can score any dataset that carries the signals it was trained on (features this dataset switched off are zero-filled)."""
+    have = set(meta.feature_columns or F.FEATURES)
+    missing = [f for f in model.input_features if f in F.FEATURES and f not in have]
+    if missing:
+        raise ValueError(f"{model.label} needs signals this dataset lacks ({', '.join(missing[:6])}). Retrain on this data instead.")
+
+
+def run_inline(ctx: Any, ds_id: str, model_id: str) -> dict[str, Any]:
+    """Run detection inside another job (the scheduled pipeline); `ctx` is usually a jobs.ScopedContext."""
+    meta = storage.get_dataset_meta(ds_id)
+    m = storage.get_model(resolve_model(model_id))
+    if meta is None or m is None:
+        raise LookupError("Dataset or model not found.")
+    check_compatible(meta, m)
+    return _run(ctx, ds_id, m.model_id, storage.new_id("run"))
 
 
 def _row_series(ds: storage.Dataset, rows: np.ndarray) -> np.ndarray:

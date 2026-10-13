@@ -13,6 +13,8 @@ data/
 # alternative data dirs used by tests (SENTINEL_DATA_DIR=data_smoke ...)
 data_smoke*/
 data_test*/
+# the demo vendor back-office's SQLite database (vendor_mock, VENDOR_MOCK_DATA_DIR)
+data_vendor*/
 
 # model files downloaded from Models -> "Use this model elsewhere"
 *.joblib

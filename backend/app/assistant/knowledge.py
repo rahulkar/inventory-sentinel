@@ -14,7 +14,26 @@ DOCS = [
     ("README", config.ROOT / "README.md"),
     ("GUIDE", config.ROOT / "GUIDE.md"),
     ("Story", Path(__file__).parent / "knowledge" / "story.md"),
+    ("Connector contract", config.ROOT / "docs" / "connector-contract.md"),
 ]
+
+
+def sop_markdown(sop) -> str:  # type: ignore[no-untyped-def]
+    """An SOP as searchable Markdown: summary, steps (with roles and deadlines), escalation, closure and the body."""
+    lines = [f"# {sop.title}", sop.summary or ""]
+    if sop.steps:
+        lines.append("## Steps")
+        for st in sop.steps:
+            due = f" within {st.due_hours:g} h" if st.due_hours else ""
+            task = f" (vendor task: {st.vendor_task.get('type')})" if st.vendor_task else ""
+            lines.append(f"- {st.text} [{st.role or 'owner'}{due}]{task}")
+    if sop.escalation:
+        lines.append("## Escalation")
+        for r in sop.escalation:
+            lines.append(f"- {r.get('label')}: severity {', '.join(r.get('severities') or ['any'])}, value at risk from £{r.get('min_value_gbp', 0)}, respond within {r.get('response_hours')} h, tell {', '.join(r.get('notify') or [])}")
+    if sop.closure:
+        lines += ["## Closure"] + [f"- {c}" for c in sop.closure]
+    return "\n".join(lines) + "\n\n" + sop.body
 STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "is", "it", "with", "as", "by", "at", "be", "this", "that", "are", "from", "its", "into", "than", "then", "so", "you", "your", "we", "our", "i", "my", "me", "how", "what", "does", "do", "can", "will"}
 _TOKEN = re.compile(r"[a-z0-9£%]+")
 TOC_HEADINGS = {"contents", "table of contents"}
@@ -108,7 +127,9 @@ _index: tuple[tuple[float, ...], BM25] | None = None
 
 
 def _signature() -> tuple[float, ...]:
-    return tuple(p.stat().st_mtime if p.exists() else -1.0 for _, p in DOCS)
+    sops_dir = config.SOPS_DIR
+    sop_sig = sum(p.stat().st_mtime for p in sops_dir.glob("*.md")) if sops_dir.exists() else -1.0
+    return tuple(p.stat().st_mtime if p.exists() else -1.0 for _, p in DOCS) + (sop_sig,)
 
 
 def index() -> BM25:
@@ -121,6 +142,10 @@ def index() -> BM25:
         if path.exists():
             chunks += split_sections(path.read_text(encoding="utf-8"), name)
     chunks += split_sections(plain_language.glossary_markdown(), "Glossary")
+    from app.services import sops
+
+    for sop in sops.load().values():
+        chunks += split_sections(sop_markdown(sop), f"SOP {sop.id}")
     _index = (sig, BM25(chunks))
     return _index[1]
 

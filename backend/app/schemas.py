@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app import config
 
-JobType = Literal["generate", "upload", "train", "detect", "retrain", "export"]
+JobType = Literal["upload", "sync", "pipeline", "train", "detect", "retrain", "export"]
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
 Severity = Literal["medium", "high", "critical"]
 Outcome = Literal["confirmed_theft", "counting_error", "process_issue", "false_alarm"]
@@ -45,11 +45,7 @@ class Job(BaseModel):
 
 
 class AppConfig(BaseModel):
-    min_rows: int
     max_rows: int
-    default_stores: int
-    default_skus: int
-    default_days: int
     max_upload_mb: int
     default_train_sample: int
     quick_train_sample: int
@@ -64,16 +60,6 @@ class AppConfig(BaseModel):
 
 
 # ---------------------------------------------------------------- datasets
-class GenerateRequest(BaseModel):
-    n_stores: int = Field(config.DEFAULT_STORES, ge=5, le=200)
-    n_skus: int = Field(config.DEFAULT_SKUS, ge=20, le=1000)
-    n_days: int = Field(config.DEFAULT_DAYS, ge=60, le=365)
-    seed: int = 42
-    anomaly_multiplier: float = Field(1.0, ge=0.25, le=3.0)
-    lp_coverage: float = Field(0.4, ge=0.0, le=1.0)
-    name: str | None = None
-
-
 class ColumnInfo(BaseModel):
     name: str
     role: Literal["id", "date", "measure", "scan", "flag", "feature", "context", "ground_truth"]
@@ -117,7 +103,7 @@ class Detection(BaseModel):
 class DatasetMeta(BaseModel):
     id: str
     name: str
-    kind: Literal["synthetic", "upload"]
+    kind: Literal["synthetic", "upload", "connector"]  # "synthetic" only on datasets made before connectors existed
     created_at: str
     n_rows: int
     n_stores: int
@@ -205,6 +191,7 @@ class TrainRequest(BaseModel):
     test_from_date: str | None = None
     exclude_lp_flagged: bool = True
     random_state: int = 42
+    activate_best: bool = True  # scheduled retrains can train without swapping the model in use
 
 
 class PRPoint(BaseModel):
@@ -369,7 +356,7 @@ class Alert(BaseModel):
     reasons: list[str] = []
     p_true: float
     status: str = "open"  # open | outcome from triage
-    truth_type: str | None = None  # synthetic answer key, only when requested
+    truth_type: str | None = None  # demo vendor answer key, only when requested
 
 
 class RunKpis(BaseModel):
@@ -607,3 +594,231 @@ class Overview(BaseModel):
     latest_run: DetectionRun | None = None
     top_alerts: list[Alert] = []
     recent_jobs: list[Job] = []
+
+
+# ---------------------------------------------------------------- vendor connectors (MCP)
+class ConnectorSync(BaseModel):
+    at: str | None = None
+    status: Literal["ok", "failed", "running"] | None = None
+    job_id: str | None = None
+    dataset_id: str | None = None
+    rows: int = 0
+    days_pulled: int = 0
+    synced_through: str | None = None
+    error: str | None = None
+    warnings: list[str] = []
+    seconds: float | None = None
+
+
+class Connector(BaseModel):
+    id: str
+    name: str
+    transport: Literal["mcp"] = "mcp"
+    url: str
+    auth_header: str = "Authorization"
+    auth_scheme: str = "Bearer"
+    token: str = ""  # masked in API responses
+    window_days: int = Field(config.SYNC_WINDOW_DAYS, ge=28, le=730)
+    resync_days: int = Field(config.SYNC_RESYNC_DAYS, ge=0, le=30)
+    retention: int = Field(config.CONNECTOR_RETENTION, ge=1, le=20)
+    use_answer_key: bool = True  # only a demo vendor offers one; used to score models, never as an input
+    feedback_from_tasks: bool = True  # closed vendor tasks become team feedback (triage)
+    enabled: bool = True
+    created_at: str
+    capabilities: dict[str, Any] | None = None
+    tested_at: str | None = None
+    last_sync: ConnectorSync | None = None
+
+
+class ConnectorIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    url: str = Field(min_length=8, max_length=500)
+    auth_header: str = "Authorization"
+    auth_scheme: str = "Bearer"
+    token: str | None = None  # a masked value keeps the stored token
+    window_days: int = Field(config.SYNC_WINDOW_DAYS, ge=28, le=730)
+    resync_days: int = Field(config.SYNC_RESYNC_DAYS, ge=0, le=30)
+    retention: int = Field(config.CONNECTOR_RETENTION, ge=1, le=20)
+    use_answer_key: bool = True
+    feedback_from_tasks: bool = True
+    enabled: bool = True
+
+
+class ConnectorTest(BaseModel):
+    ok: bool
+    capabilities: dict[str, Any] | None = None
+    error: str | None = None
+    seconds: float = 0.0
+
+
+# ---------------------------------------------------------------- vendor tasks (write-back)
+class VendorTaskDraft(BaseModel):
+    run_id: str
+    alert_id: str
+    type: str
+    priority: str | None = None
+    title: str | None = None
+    description: str | None = None
+    sop_id: str | None = None
+    sop_step: str | None = None
+    note: str | None = None
+
+
+class VendorTaskRequest(BaseModel):
+    connector_id: str | None = None
+    tasks: list[VendorTaskDraft] = Field(min_length=1, max_length=50)
+
+
+class VendorTask(BaseModel):
+    task_id: str
+    connector_id: str
+    alert_key: str | None = None
+    alert_id: str | None = None
+    run_id: str | None = None
+    store_id: str
+    sku_id: str | None = None
+    type: str
+    priority: str
+    title: str
+    status: str = "open"
+    outcome: str | None = None
+    outcome_units: int | None = None
+    outcome_note: str | None = None
+    sop_id: str | None = None
+    sop_step: str | None = None
+    source: str = "ui"
+    created_at: str
+    updated_at: str
+    feedback_recorded: bool = False
+    alert: dict[str, Any] = {}  # alert fields kept for feedback (dates, likely type, severity, team)
+
+
+# ---------------------------------------------------------------- SOPs
+class SopStep(BaseModel):
+    id: str
+    text: str
+    role: str | None = None
+    due_hours: float | None = None
+    evidence: list[str] = []
+    vendor_task: dict[str, Any] | None = None
+    raised: list[VendorTask] = []
+
+
+class SopEscalation(BaseModel):
+    level: str
+    label: str
+    response_hours: float | None = None
+    notify: list[str] = []
+
+
+class SopSummary(BaseModel):
+    id: str
+    title: str
+    version: str = "1"
+    applies_to: list[str] = []
+    parent: str | None = None
+    owner_role: str | None = None
+    summary: str | None = None
+
+
+class Sop(SopSummary):
+    escalation: list[dict[str, Any]] = []
+    steps: list[SopStep] = []
+    closure: list[str] = []
+    triage_mapping: dict[str, str] = {}
+    body: str = ""
+
+
+class AlertSop(BaseModel):
+    alert: Alert
+    sop: Sop
+    parent: SopSummary | None = None
+    escalation: SopEscalation | None = None
+    steps: list[SopStep] = []
+    connector_id: str | None = None
+    can_raise_tasks: bool = False
+    task_types: list[str] = []
+
+
+# ---------------------------------------------------------------- schedules
+class ScheduleFrequency(BaseModel):
+    kind: Literal["interval", "daily", "weekly"] = "daily"
+    every_hours: int = Field(24, ge=1, le=168)
+    at: str = "06:00"  # HH:MM in the schedule's timezone
+    days: list[int] = [0, 1, 2, 3, 4, 5, 6]  # 0 = Monday
+
+
+class ScheduleTrain(BaseModel):
+    models: list[ModelSelection] = [ModelSelection(key="iforest")]
+    train_sample_size: int = Field(config.QUICK_TRAIN_SAMPLE, ge=5_000, le=2_000_000)
+    alert_rate: float = Field(config.DEFAULT_ALERT_RATE, ge=0.001, le=0.05)
+    activate_retrained: bool = False
+    min_interval_days: int = Field(0, ge=0, le=90)  # 0 = retrain on every run
+
+
+class ScheduleAutoTasks(BaseModel):
+    enabled: bool = False
+    severities: list[Severity] = ["critical"]
+    min_value_gbp: float = Field(0.0, ge=0)
+    max_tasks: int = Field(10, ge=1, le=50)
+
+
+class SchedulePipeline(BaseModel):
+    sync: bool = True
+    model_policy: Literal["active", "fixed", "retrain"] = "active"
+    model_id: str | None = None
+    train: ScheduleTrain = ScheduleTrain()
+    auto_tasks: ScheduleAutoTasks = ScheduleAutoTasks()
+
+
+class ScheduleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    enabled: bool = True
+    connector_id: str
+    timezone: str = "Europe/London"
+    frequency: ScheduleFrequency = ScheduleFrequency()
+    pipeline: SchedulePipeline = SchedulePipeline()
+    catch_up: Literal["once", "skip"] = "once"
+
+
+class Schedule(ScheduleIn):
+    id: str
+    created_at: str
+    updated_at: str
+    next_run_at: str | None = None  # UTC ISO
+    last_run: dict[str, Any] | None = None
+    last_retrain_at: str | None = None
+    last_model_id: str | None = None  # the model this schedule last trained (retrain policy)
+
+
+class ScheduleRun(BaseModel):
+    run_id: str
+    schedule_id: str
+    data_through: str | None = None
+    schedule_name: str
+    trigger: Literal["timer", "manual", "catch_up"]
+    status: Literal["queued", "running", "done", "failed", "skipped", "cancelled"]
+    started_at: str
+    finished_at: str | None = None
+    job_id: str | None = None
+    dataset_id: str | None = None
+    model_id: str | None = None
+    detection_run_id: str | None = None
+    retrained: bool = False
+    alerts: int | None = None
+    new_alerts: int | None = None
+    new_critical: int | None = None
+    value_at_risk_gbp: float | None = None
+    proposal_id: str | None = None
+    error: str | None = None
+    error_kind: str | None = None
+    sop_id: str | None = None
+    warnings: list[str] = []
+
+
+class SchedulerStatus(BaseModel):
+    running: bool
+    last_tick: str | None = None
+    tick_seconds: int
+    schedules: int
+    enabled: int

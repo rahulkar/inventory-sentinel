@@ -2,20 +2,25 @@
 # ============================================================
 #  Inventory Sentinel - one-click init and start (macOS / Linux)
 #  Creates a virtual environment, installs Python and Node
-#  packages, builds the UI and starts the app on port 8000.
-#  Usage:  ./start.sh [--no-browser] [--port 8000] [--dev]
+#  packages, builds the UI and starts the app on port 8000,
+#  plus the demo vendor back-office on port 8020 (a simulated
+#  retailer system Sentinel connects to over MCP).
+#  Usage:  ./start.sh [--no-browser] [--port 8000] [--dev] [--no-vendor]
 # ============================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
 PORT=8000
+VENDOR_PORT=8020
 OPEN_BROWSER=1
 DEV=0
+VENDOR=1
 export PYTHONUTF8=1 LITELLM_LOCAL_MODEL_COST_MAP=True LITELLM_TELEMETRY=False ADK_DISABLE_TELEMETRY=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-browser) OPEN_BROWSER=0 ;;
     --dev) DEV=1 ;;
+    --no-vendor) VENDOR=0 ;;
     --port) PORT="$2"; shift ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
@@ -79,11 +84,19 @@ open_browser() {
   fi
 }
 
+PIDS=()
+trap 'kill "${PIDS[@]}" 2>/dev/null || true' EXIT
+if [[ "$VENDOR" == "1" ]]; then
+  echo "       starting the demo vendor back-office at http://127.0.0.1:$VENDOR_PORT (simulated data; first start seeds it) ..."
+  "$VPY" -m uvicorn vendor_mock.app:app --host 127.0.0.1 --port "$VENDOR_PORT" --log-level warning &
+  PIDS+=($!)
+  export SENTINEL_DEFAULT_CONNECTOR_URL="http://127.0.0.1:$VENDOR_PORT/mcp/"
+fi
+
 if [[ "$DEV" == "1" ]]; then
   echo " [4/5] starting the API with auto-reload in the background ..."
   "$VPY" -m uvicorn app.main:app --app-dir backend --reload --reload-dir backend/app --host 127.0.0.1 --port "$PORT" &
-  API_PID=$!
-  trap 'kill $API_PID 2>/dev/null || true' EXIT
+  PIDS+=($!)
   echo " [5/5] starting the UI dev server at http://127.0.0.1:5173  (Ctrl+C to stop)"
   open_browser "http://127.0.0.1:5173/"
   (cd frontend && npm run dev)
@@ -97,4 +110,5 @@ echo " [5/5] starting Inventory Sentinel at http://127.0.0.1:$PORT  (Ctrl+C to s
 echo "       The AI assistant is optional: connect a LiteLLM gateway later under Settings (gear, top right)."
 echo
 open_browser "http://127.0.0.1:$PORT/"
-exec "$VPY" -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "$PORT"
+# a single worker on purpose: the scheduler runs inside the API process
+"$VPY" -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "$PORT"

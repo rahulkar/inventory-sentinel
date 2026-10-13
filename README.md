@@ -1,13 +1,17 @@
 # Inventory Sentinel: inventory anomaly detection
 
-Inventory Sentinel finds unusual stock movements in daily **store x SKU** records at **5 million rows** on a laptop.
-It catches stock that goes missing, till behaviour that does not add up, miscounts, deliveries booked in wrong, typing
-mistakes and items that stop selling while the system says they are in stock. It turns them into alerts with plain
-reasons, shows trends by store and category, plans investigator time with an expected return, and learns from what
+Inventory Sentinel finds unusual stock movements in a retailer's daily **store x SKU** records, read straight from
+their inventory system over **MCP**. It catches stock that goes missing, till behaviour that does not add up,
+miscounts, deliveries booked in wrong, typing mistakes and items that stop selling while the system says they are in
+stock. It turns them into alerts with plain reasons, shows trends by store and category, and plans investigator time
+with an expected return. It tells teams what to do next from **standard operating procedures**, raises approved
+recounts and investigations back in the vendor's own system, runs all of this on a **schedule**, and learns from what
 warehouse teams find.
 
 It runs locally as one web app: a FastAPI + numpy / scikit-learn / LightGBM backend, a React + TypeScript UI, and an
-optional AI assistant built on Google ADK that talks to any OpenAI-compatible LLM gateway (LiteLLM).
+optional AI assistant built on Google ADK that talks to any OpenAI-compatible LLM gateway (LiteLLM). A separate
+**demo vendor back-office** (`vendor_mock/`) simulates a retailer's inventory system, so Sentinel never generates its
+own data: it connects to the demo vendor exactly as it would to a real one.
 
 > **New here?** Go to [Quick start](#quick-start), then [Using the app](#using-the-app). For a screen-by-screen walk-through,
 > demo scripts and troubleshooting, see **[GUIDE.md](GUIDE.md)**. To see how it works inside, read
@@ -21,20 +25,21 @@ optional AI assistant built on Google ADK that talks to any OpenAI-compatible LL
 2. [Quick start](#quick-start)
 3. [Using the app](#using-the-app)
 4. [Architecture](#architecture)
-5. [The data](#the-data)
-6. [Algorithms: how detection works](#algorithms-how-detection-works)
-7. [Models used](#models-used)
-8. [How AI helps](#how-ai-helps)
-9. [The AI assistant in detail](#the-ai-assistant-in-detail)
-10. [Measured results](#measured-results)
-11. [Using a model outside the app](#using-a-model-outside-the-app)
-12. [Configuration](#configuration)
-13. [API](#api)
-14. [Testing](#testing)
-15. [Project layout](#project-layout)
-16. [What is in git and what is not](#what-is-in-git-and-what-is-not)
-17. [Running on locked-down Windows](#running-on-locked-down-windows)
-18. [Troubleshooting](#troubleshooting)
+5. [The data: connectors and the demo vendor](#the-data-connectors-and-the-demo-vendor)
+6. [Schedules, SOPs and vendor tasks](#schedules-sops-and-vendor-tasks)
+7. [Algorithms: how detection works](#algorithms-how-detection-works)
+8. [Models used](#models-used)
+9. [How AI helps](#how-ai-helps)
+10. [The AI assistant in detail](#the-ai-assistant-in-detail)
+11. [Measured results](#measured-results)
+12. [Using a model outside the app](#using-a-model-outside-the-app)
+13. [Configuration](#configuration)
+14. [API](#api)
+15. [Testing](#testing)
+16. [Project layout](#project-layout)
+17. [What is in git and what is not](#what-is-in-git-and-what-is-not)
+18. [Running on locked-down Windows](#running-on-locked-down-windows)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -43,9 +48,10 @@ optional AI assistant built on Google ADK that talks to any OpenAI-compatible LL
 | Area | Screens | What you get |
 |---|---|---|
 | **Executive** (default) | Overview · Alerts · Plan · Story | three headline numbers, where problems happen, the five alerts to work first, a stock-story drawer and an investigator-hours slider, all without statistics vocabulary |
-| **Business** | 1 Data → 2 Train → 3 Act | generate or import daily records, let four methods compete, then alerts, a dashboard, an investigation planner, drill-downs and triage |
+| **Business** | 1 Data → 2 Train → 3 Act | connect a vendor over MCP (or import a CSV), let four methods compete on that vendor's own history, then alerts, a dashboard, an investigation planner, drill-downs with the SOP to follow, and triage |
+| **Operations** | Schedules | sync → use or retrain the model of your choice → detect at set times; vendor tasks proposed from the SOPs wait for a person's approval |
 | **Analyst** | Models · Experiments | every metric, threshold, signal and run; model export as a Python bundle or ONNX |
-| **Assistant** | chat on every page, Assistant page, Settings | a team of AI agents that reads alerts and plans, explains why something was flagged and proposes jobs for you to confirm |
+| **Assistant** | chat on every page, Assistant page, Settings | a team of AI agents that reads alerts and plans, looks up live stock in the vendor system, quotes the SOPs, sets up schedules and proposes jobs and vendor tasks for you to confirm |
 | **How it works** | story + Present mode | a seven-slide leadership story with live figures |
 
 The use case comes from the AI Friday brief, *anomaly detection in inventory*. An unsupervised model flags unusual
@@ -92,7 +98,9 @@ The script:
 2. installs `requirements.txt`
 3. runs `npm install` in `frontend/`
 4. builds the UI into `frontend/dist`
-5. starts the app at **http://127.0.0.1:8000** and opens your browser
+5. starts the **demo vendor back-office** at **http://127.0.0.1:8020** (a simulated retailer system; its first start
+   seeds about 2.7M rows in under a minute) and registers it as Sentinel's connector
+6. starts the app at **http://127.0.0.1:8000** and opens your browser
 
 The first run takes a few minutes. Later runs start in seconds.
 
@@ -101,8 +109,10 @@ The first run takes a few minutes. Later runs start in seconds.
 | `--port 8080` | serve on another port |
 | `--no-browser` | do not open a browser tab |
 | `--dev` | API with auto-reload on :8000 and the Vite dev server with hot reload on **:5173** |
+| `--no-vendor` | do not start the demo vendor (connect your own system on the Data page) |
 
-Other launchers: `run_demo.ps1` (build the UI and serve it, Windows PowerShell) and `dev.ps1` (dev mode in two windows).
+Other launchers: `run_demo.ps1` (build the UI and serve it, Windows PowerShell) and `dev.ps1` (dev mode: vendor, API and
+UI dev server; `-NoVendor` skips the vendor).
 
 ### Manual start (any OS)
 
@@ -111,15 +121,19 @@ python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 npm install --prefix frontend
 npm run build --prefix frontend
-.venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+# the demo vendor (optional; any MCP server implementing docs/connector-contract.md works)
+.venv/bin/python -m uvicorn vendor_mock.app:app --host 127.0.0.1 --port 8020 &
+SENTINEL_DEFAULT_CONNECTOR_URL=http://127.0.0.1:8020/mcp/ \
+  .venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-(On Windows use `.venv\Scripts\python.exe`.)
+(On Windows use `.venv\Scripts\python.exe`.) Serve the API with **one** worker: the scheduler runs inside it.
 
 ### Start clean
 
-Stop the app and delete the `data/` folder. It holds every dataset, model, run, triage decision and the assistant
-settings, and it is recreated empty on the next start.
+Stop the app and delete the `data/` folder. It holds every snapshot, model, run, triage decision, connector, schedule
+and the assistant settings, and it is recreated empty on the next start. The demo vendor keeps its own data in
+`data_vendor/` (or press **Reset demo data** on its dashboard).
 
 ---
 
@@ -129,14 +143,17 @@ settings, and it is recreated empty on the next start.
 
 | Step | Where | Do | Takes |
 |---|---|---|---|
-| 1 | **Overview** (Executive) | press **Run the whole pipeline** on an empty install | ~1 min at 1M rows, ~4 min at 5M |
-| or 1a | **1 Data** (Analyst) | **Generate** 80 stores x 500 SKUs x 125 days = 5M rows | ~30 s |
+| 1 | **Overview** (Executive) | press **Run the whole pipeline** on an empty install (sync the vendor, train, detect) | ~1-2 min |
+| or 1a | **1 Data** (Analyst) | the demo vendor is already connected: press **Sync now** (120 days x 40 stores x 250 SKUs = 1.2M rows) | ~30 s |
 | 1b | **2 Train** | tick the four methods, press **Train**; the best becomes the *model in use* | ~1 min |
 | 1c | **3 Act** | press **Run detection** | ~2 min |
-| 2 | **Act → Alerts** | open the top critical alert: reasons, money at risk, P(true), stock story | |
+| 2 | **Act → Alerts** | open the top critical alert: reasons, money at risk, P(true), **What to do** (the SOP, escalation level, "Raise vendor task", live stock) | |
+| 2b | demo vendor **Tasks from Sentinel** (:8020) | close the task with an outcome; the next sync turns it into team feedback | |
 | 3 | **Act → Investigation planner** | enter hours (e.g. 120) and hourly cost (e.g. £28) to get a ranked work list per team | instant |
 | 4 | **Act → Triage** | **Simulate a week of team reviews**, then **Retrain with feedback** | ~40 s |
-| 5 | **Chat** (bottom right) | "Why was the top alert flagged?" (needs a gateway, see below) | |
+| 5 | **Schedules** | **New schedule**: daily at 06:00, retrain Isolation Forest, propose tasks for critical alerts; press **Run now** | ~1 min |
+| 6 | demo vendor dashboard | **Close today's trading (+1 day)**, then **Run now** again: only the new day is pulled | |
+| 7 | **Chat** (bottom right) | "Why was the top alert flagged?", "What's the SOP?", "Stock of K00012 at S003?" (needs a gateway) | |
 
 ### Executive mode vs Analyst mode
 
@@ -154,19 +171,27 @@ The **Executive | Analyst** switch (top right) shows every screen. The browser r
 
 | Screen | What it is for |
 |---|---|
-| **1 Data** | Generate synthetic data or import a CSV / ZIP; preview daily rows, stores, SKUs, loss-prevention flags and (synthetic only) the answer key; export a ZIP |
+| **1 Data** | Connect vendors over MCP (URL + token, test, **Sync now**, warnings such as a stale feed), or import a CSV / ZIP; preview a snapshot's daily rows, stores, SKUs, loss-prevention flags and (demo vendor only) the answer key; export a ZIP |
 | **2 Train** | Pick methods and settings; see the leaderboard, precision-recall curves and "what the winner catches" by anomaly type |
 | **3 Act → Alerts** | Filter and sort alerts; open one for reasons, value at risk, P(true) and triage buttons; CSV download |
 | **3 Act → Dashboard** | Trend by severity or type, store x category heatmap, top stores, teams and categories |
 | **3 Act → Investigation planner** | Hours and cost in; ranked work list, expected recovery, return on cost, breakeven hours, per-team CSV / ZIP out |
-| **3 Act → Drill-down** | One SKU in one store over time: expected against counted stock, daily gap, flagged days and why |
+| **3 Act → Drill-down** | One SKU in one store over time: expected against counted stock, daily gap, flagged days and why, and the SOP checklist for the alert |
 | **3 Act → Triage & feedback** | Record outcomes, simulate reviews, recalibrate P(true), retrain with a feedback re-ranker |
+| **Schedules** | Timed pipelines with the model policy of your choice, run history linked to the alerts, approvals waiting from scheduled runs |
 | **Models** | Every model with metrics, thresholds, drivers, calibration; export a bundle or ONNX |
 | **Experiments** | Every training run with its leaderboard |
 | **Assistant** | Full-page chat, saved conversations, per-agent token usage and cost |
 | **Settings (⚙)** | LLM gateway URL, key, model, TLS options, single-agent or team mode, prices |
 
-### Importing your own data
+### Connecting your own inventory system
+
+Sentinel talks to inventory systems through the **Sentinel Inventory Connector** contract: a small set of MCP tools
+(capabilities, stores, SKUs, paged daily movements, loss-prevention flags, a live stock lookup, and a task inbox). Put
+an MCP adapter in front of your system (see **[docs/connector-contract.md](docs/connector-contract.md)**), then add it on
+**1 Data → Connect a data source** with its URL and token. Models always train on **that system's own history**.
+
+### Importing a CSV instead
 
 Upload a CSV with **one row per store, SKU and day**.
 
@@ -202,10 +227,11 @@ flowchart LR
   end
 
   subgraph API["FastAPI (one process, port 8000)"]
-    R["REST routers<br/>datasets, training, runs,<br/>planner + triage, jobs, settings"]
+    R["REST routers<br/>connectors, datasets, training, runs,<br/>planner + triage, schedules, SOPs, jobs, settings"]
     J["Background job queue<br/>(progress, cancel)"]
+    SC["Scheduler<br/>(timed pipelines)"]
     subgraph ML["ML services"]
-      SY["synth: simulator"]
+      SY["sync: MCP client,<br/>local copy, snapshots"]
       FE["features: 16 signals"]
       DT["detectors: z-score, IForest,<br/>LOF, autoencoder"]
       CA["calibration: P(true)"]
@@ -216,7 +242,7 @@ flowchart LR
     end
     subgraph AI["Assistant"]
       ADK["Google ADK agent team"]
-      TL["24 tools"]
+      TL["32 tools"]
       KB["BM25 doc search"]
       MCP["MCP server /mcp/"]
     end
@@ -225,8 +251,11 @@ flowchart LR
   Store[("data/<br/>.npy column store,<br/>models, runs, triage")]
   GW["LLM gateway (LiteLLM,<br/>OpenAI-compatible)"]
   Ext["External agents<br/>(Claude Desktop, IDEs)"]
+  Vendor["Vendor inventory system<br/>(MCP connector; demo: vendor_mock :8020)"]
 
   UI --> R --> J --> ML --> Store
+  SC --> J
+  SY <-- "MCP: data in, approved tasks out" --> Vendor
   Chat -- SSE --> ADK --> TL --> ML
   ADK <--> GW
   Ext <--> MCP --> TL
@@ -238,23 +267,60 @@ flowchart LR
 - **Long work runs as jobs.** Endpoints return `202` with a job id; the UI polls `/api/jobs/{id}` for steps, progress
   and estimated time, and can cancel.
 - **The UI is served by the API.** In production mode FastAPI serves `frontend/dist`, so it is a single process on a
-  single port.
+  single port (plus the demo vendor, a separate process, when you use it).
+- **Sentinel is an MCP client and an MCP server.** It reads vendors through MCP connectors (`services/connectors.py`,
+  `services/sync.py`) and exposes its own tools to external agents at `/mcp/`. `app/mcp_compat.py` bridges the mcp 1.x
+  and 2.x SDKs.
 
 ---
 
-## The data
+## The data: connectors and the demo vendor
 
-### Synthetic generator (`services/synth.py`)
+### Where the data comes from
 
-Each series (one SKU in one store) carries two stocks:
+Sentinel does not make up data. Each **connector** is a vendor's MCP server implementing the
+[connector contract](docs/connector-contract.md). A **sync** (`services/sync.py`, a background job):
+
+1. checks the vendor's capabilities (contract version, status, fields, task types);
+2. pulls stores, SKUs and **only new days** of stock movements, plus `resync_days` (3) of recent days for late
+   corrections. Pages are columnar and dictionary-encoded, 50,000 rows each, and go into a local copy under
+   `data/connectors/<id>/mirror/`. A first full pull of 1.2M rows takes about 25 s on a laptop;
+3. pulls loss-prevention flags, and the answer key **only if** the vendor is a demo that offers one;
+4. reads back the outcomes of vendor tasks Sentinel raised (they become team feedback);
+5. builds a **snapshot** dataset of the last `window_days` (120) and keeps the newest `retention` (3) snapshots. It
+   never deletes the training data of the model in use, of a schedule's fixed model, or of a running job;
+6. warns about a stale feed (no new trading day), missing days or a short last day.
+
+Team decisions are stored **per connector**, so they carry over from one snapshot to the next.
+
+**Why train on each vendor's own data?** The detectors are unsupervised: they learn what normal looks like for *these*
+stores (delivery days, count noise, till habits, promotions). A model trained on another estate would flag that
+estate's normal as anomalous. The same pipeline therefore runs against the demo vendor and a real one.
+
+Each daily row is one SKU in one store: opening stock, received, sold, returned, transfers in and out, adjustments,
+expected and counted closing stock, till scans, keyed-in scans, voids, overrides, after-hours scans, receiving scans and
+a promotion flag. Only counted stock and expected (or opening + sold) stock are required.
+
+### The demo vendor back-office (`vendor_mock/`)
+
+A separate FastAPI app (port 8020) that plays a retailer's inventory system:
+
+- **Its own SQLite database** in `data_vendor/`, seeded on first start with 40 stores x 250 SKUs x 270 days (150 past,
+  120 future). Size it with `VENDOR_MOCK_STORES`, `VENDOR_MOCK_SKUS`, `VENDOR_MOCK_HISTORY_DAYS` and
+  `VENDOR_MOCK_FUTURE_DAYS`.
+- **A business clock.** Only days up to yesterday are visible. The clock follows the calendar, and
+  **Close today's trading (+1 day)** fast-forwards it, so new data arrives day by day for the scheduler.
+- **A back-office UI:** dashboard, stores, products, stock ledger, loss-prevention flags, a **Tasks from Sentinel**
+  inbox where store staff set the status and outcome, and a demo answer-key page.
+- **The MCP server** at `/mcp/` (optional bearer token: `VENDOR_MOCK_TOKEN`) implementing the connector contract.
+
+Its simulator (`vendor_mock/sim/synth.py`) gives each series (one SKU in one store) two stocks:
 
 - a **physical stock** that the business cannot see
 - a **book stock** that the system computes from deliveries, sales, returns, transfers and adjustments
 
 Every evening the stock is counted (RFID-style) and the count resets the book. The daily gap
 `expected_closing - counted_closing` is therefore the core shrinkage signal.
-
-**Default size:** 80 stores x 500 SKUs x 125 days = **5,000,000 rows**. The allowed range is 1M to 10M rows.
 
 - **Stores** span six regions across the UK and Ireland in four formats (high street, retail park, flagship, outlet),
   each with a warehouse team.
@@ -280,9 +346,59 @@ shrink. They make a naive rule raise false alarms that the learned methods learn
 - 40% of thefts and 20% of other problems are ever flagged
 - 10% of flags carry the wrong type
 - a few flags land on ordinary days
+- each flag is reported 2 to 10 days after the day it concerns
 
-**The answer key** (`truth_type`, `truth_incident`, `truth_loss_units`) is stored separately. It is **never a model
-input**; it is used only to mark the methods' homework and to simulate team reviews.
+**The answer key** (`truth_type`, `truth_incident`, `truth_loss_units`) stays inside the demo vendor and is offered
+through a demo-only tool. Sentinel uses it **only** to mark the methods' homework and to simulate team reviews. It is
+**never a model input**, and real vendors have none: there, models are judged on loss-prevention flags and team feedback.
+
+---
+
+## Schedules, SOPs and vendor tasks
+
+### Schedules (`services/scheduler.py`, page **Schedules**)
+
+A schedule says **when** (every day / some weekdays at HH:MM, or every N hours, in a time zone), **which data** (sync a
+connector first, or score its latest snapshot) and **which model**:
+
+| Model policy | What it does | When to use |
+|---|---|---|
+| **The model in use** | scores with whatever model is active when the run starts | you manage models by hand on the Models page |
+| **A specific saved model** | always the same model | stable, comparable scores run to run |
+| **Retrain each run** | trains the algorithms you pick (z-score, Isolation Forest, autoencoder, LOF, with their settings) on the fresh snapshot and scores with the best; optionally "at most every N days" and "make it the model in use" | follow drift: new lines, seasons |
+
+Each run is **one pipeline job** (sync, then train, then detect, then propose) on the shared queue. It cancels as a
+unit and never overlaps itself. A daemon thread checks every 30 s. A run missed while Sentinel was down becomes one
+**catch-up** run (or is skipped, per schedule), and a run left half-finished by a restart is marked failed. History is
+kept in `data/schedule_runs.jsonl`. Each run records new alerts (those reaching into days the previous run had not
+seen), critical alerts, value at risk and any error, with its **error kind** and the SOP to follow.
+
+With **Propose vendor tasks** on, a run picks new alerts at the chosen severities (and minimum £), up to N, and creates
+**one proposal** using each alert's SOP. Nothing goes to the vendor until someone presses **Approve and raise** on the
+Schedules page (or in the chat). Proposals from scheduled runs wait **72 hours**.
+
+### SOPs (`docs/sops/*.md`, `services/sops.py`)
+
+Standard operating procedures for what to do when stock goes missing, as Markdown with YAML front matter (schema in
+[docs/sops/README.md](docs/sops/README.md)):
+
+- **`missing-inventory-response`** is the master procedure: triage, an **escalation matrix** (severity x value at risk
+  → L1 store check 72 h, L2 store manager + loss prevention 24 h, L3 regional loss prevention 4 h), evidence rules,
+  closure and feedback;
+- one SOP per alert type (external theft, internal involvement handled confidentially, till fraud, counting error,
+  receiving error, data-entry error, sales stopped or spiked, unclear);
+- **`data-feed-failure`** for failed or stale syncs and scheduled runs, and **`false-positive-handling`**.
+
+The alert detail and the drill-down show the matching SOP as a checklist, with steps filled in from the alert, owners,
+deadlines and evidence. A step with a task template offers **Raise vendor task**, and a **live stock** check reads the
+vendor system now. The assistant quotes SOPs (`get_sop`, `find_sop`), and MCP clients read them as `sentinel://sop/<id>`.
+
+### Vendor tasks (`services/vendor_tasks.py`)
+
+Approved tasks go to the vendor's `create_task` tool, with an idempotency key `<alert_key>:<type>` so that retries never
+duplicate work. Every sync reads status changes back. A **closed task becomes a team decision** for the alert:
+confirmed loss → confirmed theft (theft-type alerts) or process issue, count corrected → counting error, process fixed →
+process issue, no issue → false alarm. Those decisions feed P(true) recalibration and the feedback re-ranker.
 
 ---
 
@@ -360,7 +476,7 @@ rows the same way.
    - **high** = the 99.8th percentile
    - **critical** = the 99.95th percentile
 4. **Mark the exam.** Use every positive in the exam window plus 300,000 sampled negatives, weighted so they stand for
-   all negatives. Labels come from the synthetic answer key; on real data they come from loss-prevention flags, a lower
+   all negatives. Labels come from a demo vendor's answer key; on real data they come from loss-prevention flags, a lower
    bound because most incidents are never flagged. With no labels, only the alert rate is reported.
 5. **Pick the winner.** The method with the highest **average precision** becomes the *model in use*.
 
@@ -440,8 +556,9 @@ on P(true).
 ### 7. Learning from feedback (`services/triage.py`, `services/reranker.py`)
 
 Teams record one of four outcomes per alert: **confirmed theft, counting error, process issue or false alarm**.
-Decisions are stored per dataset under a stable alert key, so they carry across detection runs. On synthetic data,
-**Simulate a week of team reviews** fills in decisions from the answer key, with noise. Teams work the top of the queue
+Decisions are stored per connector (per dataset for imports) under a stable alert key, so they carry across detection
+runs and snapshots. Closed vendor tasks arrive as decisions by themselves. With the demo vendor,
+**Simulate a week of team reviews** fills in decisions from its answer key, with noise. Teams work the top of the queue
 and spot-check further down.
 
 **Retrain with feedback** becomes available after 30 reviews with at least 5 real problems and 5 false alarms. It trains
@@ -523,8 +640,9 @@ instead of learning the screens:
   The assistant never runs or changes anything by itself.
 - **Speaks the audience's language.** In Executive mode it answers in under 90 words without statistics jargon.
 - **Responsible by design.** It describes patterns as "consistent with" theft or error, never accuses a person or team
-  (the data holds no employee identities), and labels figures that come from the synthetic answer key.
-- **Open to other agents.** The same 24 tools are an **MCP server**, so Claude Desktop, IDE agents or other apps can
+  (the data holds no employee identities), labels figures that come from a demo vendor's answer key, and follows the SOPs
+  rather than improvising procedures.
+- **Open to other agents.** The same 32 tools are an **MCP server**, so Claude Desktop, IDE agents or other apps can
   query alerts and plans directly.
 
 **What the LLM does not do:** it does not score rows, choose alerts, set thresholds or compute money figures. All of
@@ -542,10 +660,11 @@ with transfer):
 | Agent | Handles | Tools |
 |---|---|---|
 | **Front door** (`sentinel_assistant`) | greetings, "what is loaded", status, routing | common: `app_state`, `search_docs`, `explain_metric`, `job_status`, `usage_summary` |
-| **Data analyst** | datasets, columns, the generator, LP flags; proposes generate / import | common + `list_datasets`, `describe_dataset`, `preview_rows`, `propose_job` |
+| **Data analyst** | snapshots and imports, columns, LP flags, live stock lookups; proposes sync / re-map | common + `list_datasets`, `describe_dataset`, `preview_rows`, `list_connectors`, `vendor_lookup`, `propose_job` |
 | **Model analyst** | methods, metrics, drivers, training, feedback retraining, ONNX, model in use | common + `available_algorithms`, `list_models`, `model_detail`, `list_experiments`, `triage_summary`, `list_datasets`, `propose_job` |
-| **Alert investigator** | runs, alerts, why something was flagged, drill-downs, trends, hotspots | common + `list_detection_runs`, `alert_summary`, `list_alerts`, `explain_alert`, `sku_drilldown`, `anomaly_trend`, `hotspots`, `search_series`, `propose_job` |
-| **Loss-prevention planner** | investigator hours, expected recovery, ROI, work lists | common + `list_detection_runs`, `alert_summary`, `investigation_plan`, `compare_plans`, `hotspots` |
+| **Alert investigator** | runs, alerts, why something was flagged, drill-downs, the SOP to follow, live stock, trends, hotspots | common + `list_detection_runs`, `alert_summary`, `list_alerts`, `explain_alert`, `sku_drilldown`, `anomaly_trend`, `hotspots`, `search_series`, `get_sop`, `find_sop`, `vendor_lookup`, `list_vendor_tasks`, `propose_job` |
+| **Loss-prevention planner** | investigator hours, expected recovery, ROI, work lists, escalation | common + `list_detection_runs`, `alert_summary`, `investigation_plan`, `compare_plans`, `hotspots`, `get_sop`, `find_sop` |
+| **Operations coordinator** | connectors and syncs, schedules (create, change, run, history), vendor tasks, SOPs for missing stock and failed feeds | common + `list_connectors`, `connector_status`, `vendor_lookup`, `list_vendor_tasks`, `list_schedules`, `schedule_history`, `get_sop`, `find_sop`, `list_detection_runs`, `list_alerts`, `list_models`, `available_algorithms`, `propose_job` |
 | **Explainer** | how the app works, glossary, screens, troubleshooting | common |
 
 Settings can switch to **single-agent mode**: one agent with every tool, which is cheaper on small models.
@@ -557,7 +676,8 @@ Every agent's instruction is rebuilt on each turn from three parts:
 1. **Preamble:** what the app is and its conventions (British English, £, plain metric wording).
 2. **Guardrails:** ten rules, summarised below.
 3. **Current state** (`context_pack.py`): the page, tab and mode you are on, the selected dataset, run, alert and
-   store/SKU, the model in use, running jobs and pending proposals.
+   store/SKU, the model in use, connectors (last sync, warnings, open vendor tasks), schedules (next run, last result),
+   approvals waiting from scheduled runs, running jobs and pending proposals. Tokens are never included.
 
 Tool arguments such as `run_id`, `alert_id` and `store_id` are filled from the UI selection when the model leaves them
 empty (`adk_tools.py`). Tool results are capped at 20 rows and 600-character texts to keep prompts small.
@@ -566,19 +686,22 @@ empty (`adk_tools.py`). Tool results are capped at 20 rows and 600-character tex
 
 - never invent numbers
 - one well-chosen tool call, then answer
-- every change is a proposal for you to confirm
+- every change is a proposal for you to confirm (syncs, schedules and vendor tasks included)
 - planner figures are estimates
 - uploads, deletes and triage happen in the app's pages, not in chat
 - say which model produced a run
 - "consistent with", never accusations
-- name figures that come from the synthetic answer key
+- name figures that come from a demo vendor's answer key
+- live vendor lookups are quoted as live, with their as-of date; procedures come from the SOPs, never improvised
 - executive answers stay short and jargon-free
 
-### The 24 tools (`assistant/tools.py`)
+### The 32 tools (`assistant/tools.py`)
 
 | Group | Tools |
 |---|---|
 | Data | `list_datasets`, `describe_dataset`, `preview_rows` |
+| Vendor | `list_connectors`, `connector_status`, `vendor_lookup` (live), `list_vendor_tasks` |
+| Operations | `list_schedules`, `schedule_history`, `get_sop`, `find_sop` |
 | Models | `available_algorithms`, `list_models`, `model_detail`, `list_experiments` |
 | Alerts | `list_detection_runs`, `alert_summary`, `anomaly_trend`, `hotspots`, `list_alerts`, `explain_alert`, `sku_drilldown`, `search_series` |
 | Planning | `investigation_plan`, `compare_plans`, `triage_summary` |
@@ -587,19 +710,15 @@ empty (`adk_tools.py`). Tool results are capped at 20 rows and 600-character tex
 
 ### Proposals, not actions (`assistant/proposals.py`)
 
-There are eight proposal kinds:
+There are twelve proposal kinds:
 
-- `generate`
-- `configure`
-- `train`
-- `detect`
-- `retrain_feedback`
-- `export_dataset`
-- `export_onnx`
-- `activate_model`
+- jobs: `sync`, `configure`, `train`, `detect`, `retrain_feedback`, `export_dataset`, `export_onnx`, `run_schedule`
+- changes applied on confirmation: `activate_model`, `create_schedule`, `update_schedule`, `vendor_task`
 
 The assistant validates the parameters, estimates the run time and shows a card. Nothing runs until you press
-**Confirm**; then the job goes through the normal job queue. Proposals expire after 30 minutes.
+**Confirm**; then jobs go through the normal job queue. Chat proposals expire after 30 minutes. Vendor-task proposals
+from scheduled runs wait 72 hours on the Schedules page. Schedule proposals accept chat-friendly shortcuts such as
+`{"at": "06:00", "days": ["mon", "thu"], "models": ["iforest"], "auto_tasks": true}`.
 
 ### Transparency and cost (`assistant/usage.py`)
 
@@ -623,16 +742,18 @@ Raw datasets, models and the answer key are never uploaded. Without a gateway, n
 
 ### MCP server for external agents (`assistant/mcp_server.py`)
 
-`http://127.0.0.1:8000/mcp/` exposes the 24 tools over streamable HTTP, plus four resources: `sentinel://guide`,
-`sentinel://readme`, `sentinel://glossary` and `sentinel://story`. Point any MCP client at that URL. Jobs proposed over
-MCP still need confirmation in the app's chat.
+`http://127.0.0.1:8000/mcp/` exposes the 32 tools over streamable HTTP, plus resources: `sentinel://guide`,
+`sentinel://readme`, `sentinel://glossary`, `sentinel://story`, `sentinel://sops` and `sentinel://sop/<id>`. Point any
+MCP client at that URL. Jobs proposed over MCP still need confirmation in the app. Tools run in a worker thread, so a
+live vendor lookup made from an MCP client does not block the server.
 
 ---
 
 ## Measured results
 
-These figures were measured on 5,000,000 store-SKU-days on a 6-core laptop. Four methods were trained on a
-200,000-day sample of the history window and marked on the last 28% of days (the exam) against the synthetic answer key.
+These figures were measured on 5,000,000 simulated store-SKU-days (80 stores x 500 SKUs x 125 days) on a 6-core laptop.
+Four methods were trained on a 200,000-day sample of the history window and marked on the last 28% of days (the exam)
+against the simulator's answer key. The default demo vendor is smaller (1.2M rows per 120-day snapshot).
 
 | Method | Average precision | Real in the top 1,000 | Incidents caught | Value caught |
 |---|---|---|---|---|
@@ -647,7 +768,8 @@ These figures were measured on 5,000,000 store-SKU-days on a 6-core laptop. Four
 
 | Step | Time |
 |---|---|
-| Generate 5M rows (simulation, features, stats) | ~29 s |
+| First sync of 1.2M rows over MCP (pull, snapshot, features, stats) | ~28 s |
+| Incremental sync (new day + 3 days of corrections) | ~4 s |
 | Train all four methods | ~58 s |
 | Detect with Isolation Forest (numpy engine) | ~2 min |
 | ONNX export + validation, per model | < 1 s |
@@ -691,7 +813,10 @@ The feedback re-ranker chains two models, so it is bundle-only.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SENTINEL_DATA_DIR` | `./data` | where datasets, models, runs and settings live |
-| `SENTINEL_MIN_ROWS` | `1000000` | minimum dataset size; lower it (e.g. `50000`) for quick tests |
+| `SENTINEL_DEFAULT_CONNECTOR_URL` | unset (the start scripts set it to the demo vendor) | registered as a connector on start-up when there is none |
+| `SENTINEL_DEFAULT_CONNECTOR_NAME` / `_TOKEN` | "Demo vendor (simulated)" / none | name and token for that connector |
+| `SENTINEL_SCHEDULER` | `on` | `off` disables the scheduler thread (e.g. for a second API process) |
+| `VENDOR_MOCK_*` | see [the demo vendor](#the-demo-vendor-back-office-vendor_mock) | demo vendor size, seed, port URL, token, data dir |
 | `LITELLM_SSL_VERIFY` | unset (off) | `true` verifies the gateway's TLS certificate |
 | `LITELLM_CA_BUNDLE` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` | unset | PEM bundle for a corporate CA |
 | `LITELLM_LOCAL_MODEL_COST_MAP`, `LITELLM_TELEMETRY`, `ADK_DISABLE_TELEMETRY` | set by the start scripts | offline price map, telemetry off |
@@ -700,8 +825,10 @@ The feedback re-ranker chains two models, so it is bundle-only.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `DEFAULT_STORES / SKUS / DAYS` | 80 / 500 / 125 | generator size (5M rows) |
-| `MIN_ROWS / MAX_ROWS` | 1M / 10M | allowed dataset size |
+| `MAX_ROWS` | 10M | largest dataset |
+| `SYNC_WINDOW_DAYS / SYNC_RESYNC_DAYS / CONNECTOR_RETENTION` | 120 / 3 / 3 | connector defaults (each connector can override) |
+| `SYNC_PAGE_SIZE`, `MCP_CALL_TIMEOUT_S` | 50,000, 120 | vendor paging and timeouts |
+| `SCHEDULER_TICK_S`, `SCHEDULER_PROPOSAL_TTL_S` | 30, 72 h | scheduler cadence, approval window for its proposals |
 | `DEFAULT_TRAIN_SAMPLE` | 200,000 | rows used to fit each method |
 | `DEFAULT_ALERT_RATE` | 0.008 | share of training days above the alert threshold |
 | `SEVERITY_QUANTILES` | high 0.998, critical 0.9995 | severity cut-offs |
@@ -721,14 +848,17 @@ Interactive docs are at **http://127.0.0.1:8000/docs**. Heavy endpoints return `
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health`, `/api/config`, `/api/overview` | versions and engines, limits, summary |
-| POST / GET | `/api/datasets/generate`, `/upload`, `/{id}/configure`, `/{id}/preview?table=`, `/{id}/export` | data |
+| GET / POST / PUT / DELETE | `/api/connectors`, `/test`, `/{id}/test`, `/{id}/sync`, `/{id}/lookup?store_id=&sku_id=`, `/{id}/tasks` | vendor connectors |
+| POST / GET | `/api/datasets/upload`, `/{id}/configure`, `/{id}/preview?table=`, `/{id}/export` | data |
+| GET / POST / PUT / DELETE | `/api/schedules`, `/preview`, `/status`, `/runs`, `/pending-approvals`, `/{id}/run`, `/{id}/runs`, `/{id}/enabled` | schedules |
+| GET / POST | `/api/sops`, `/api/sops/{id}`, `/api/runs/{run_id}/alerts/{alert_id}/sop`, `/api/vendor-tasks` | SOPs and vendor tasks |
 | GET / POST | `/api/models/available`, `/api/train`, `/api/models`, `/api/models/{id}/activate`, `/api/experiments` | training |
 | POST / GET | `/api/detect`, `/api/runs`, `/api/runs/{id}/dashboard`, `/alerts`, `/alerts/{alert_id}`, `/series`, `/search` | detection |
 | POST / GET | `/api/plan`, `/api/plan/{run_id}/worklist.csv`, `/worklist.zip` | investigation planner |
 | POST / GET | `/api/triage`, `/triage/bulk`, `/triage/summary`, `/triage/simulate`, `/api/runs/{id}/recalibrate`, `/api/models/{id}/retrain-feedback` | feedback |
 | GET / POST | `/api/models/{id}/export`, `/api/models/{id}/export/onnx`, `/api/models/{id}/onnx/download` | export |
 | GET / PUT / POST | `/api/settings/llm`, `/api/assistant/chat` (SSE), `/api/assistant/usage` | assistant |
-| MCP | `/mcp/` | 24 tools + 4 resources |
+| MCP | `/mcp/` | 32 tools + resources (guide, readme, glossary, story, SOPs) |
 
 ---
 
@@ -737,22 +867,27 @@ Interactive docs are at **http://127.0.0.1:8000/docs**. Heavy endpoints return `
 The smoke tests are plain scripts with no test framework needed. Start the app first for the API and assistant tests.
 
 ```bash
-# whole flow through the HTTP API at the full 5M-row size (prints a timing table)
-python backend/tests/api_smoke.py
+# the demo vendor's connector contract (starts its own tiny vendor): paging, clock, tasks, auth, pages
+python vendor_mock/tests/smoke.py
 
-# quick version: start the server with SENTINEL_MIN_ROWS=50000, then
-python backend/tests/api_smoke.py --small
-
-# services only (no server): generate, train 4, detect, plan, triage, retrain, ONNX, bundle predict.py
+# services only (starts its own tiny vendor): sync, train 4, detect, SOP, vendor task round trip, feedback,
+# incremental sync + retention, schedules (timer, catch-up, retrain), plan, triage, retrain, ONNX, bundle predict.py
 PYTHONPATH=backend python backend/tests/service_smoke.py
 
-# assistant: settings, streaming chat with tool calls, proposals, sessions, MCP, against a built-in fake gateway
+# whole flow through the HTTP API against a running server and vendor (prints a timing table)
+python backend/tests/api_smoke.py --base http://127.0.0.1:8000 --vendor http://127.0.0.1:8020/mcp/
+
+# assistant: settings, chat with tool calls and hand-overs, proposals, sessions, MCP, SOPs, schedules, live lookups,
+# against a built-in fake gateway. It REWRITES the server's assistant settings: run it against a test server
+# (SENTINEL_DATA_DIR=data_smoke_assist ...), never your own data/
 python backend/tests/assistant_smoke.py
 # ...or against a real gateway
 python backend/tests/assistant_smoke.py --gateway https://gateway.example --key KEY --model MODEL_ID
 ```
 
-`service_smoke.py` writes to `data_smoke/`, which is git-ignored. The UI type-checks as part of `npm run build`.
+`service_smoke.py` writes to `data_smoke/` (git-ignored; `SENTINEL_SMOKE_DIR` moves it). The UI type-checks as part of
+`npm run build`. Production targets Python 3.11: run the smoke tests in `python:3.11-slim` (with `libgomp1` for
+LightGBM) before shipping.
 
 ---
 
@@ -764,17 +899,32 @@ inventory_anomaly/
 ├── run_demo.ps1 · dev.ps1          PowerShell: build-and-serve / dev mode with hot reload
 ├── requirements.txt                Python dependencies
 ├── README.md · GUIDE.md            this file · screen-by-screen user guide (both also feed the assistant's doc search)
-├── .claude/launch.json             dev-server definitions (api on :8000, frontend-dev on :5173)
+├── docs/
+│   ├── connector-contract.md       the MCP contract a vendor implements (also searchable by the assistant)
+│   └── sops/                       standard operating procedures (Markdown + YAML front matter)
+├── vendor_mock/                    demo vendor back-office (separate app, :8020)
+│   ├── app.py · ui.py              FastAPI app, server-rendered back-office pages
+│   ├── connector.py · service.py   the MCP server (connector contract) and its data access, business clock, task inbox
+│   ├── db.py · seed.py             SQLite schema, one-off simulation of history + future days
+│   ├── sim/synth.py                the retailer simulator with injected, labelled anomalies
+│   └── tests/smoke.py              contract checks
+├── .claude/launch.json             dev-server definitions (app on :8010, vendor on :8020)
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                 FastAPI app, health, static UI, MCP mount
 │   │   ├── config.py               paths, limits, planner assumptions, domain constants
 │   │   ├── compat.py               pure-Python fallback for blocked SQLAlchemy binaries
 │   │   ├── schemas.py              Pydantic request / response models
-│   │   ├── routers/                datasets, training, runs, planner (+ triage), jobs, settings, assistant
+│   │   ├── mcp_compat.py           mcp 1.x / 2.x bridge (server factory, client session, sync-to-async)
+│   │   ├── routers/                connectors, datasets, schedules, sops (+ vendor tasks), training, runs, planner (+ triage), jobs, settings, assistant
 │   │   ├── services/
-│   │   │   ├── synth.py            synthetic retailer simulator with injected, labelled anomalies
-│   │   │   ├── ingest.py           CSV / ZIP import with column mapping
+│   │   │   ├── connectors.py       vendor connectors (MCP client calls, masked tokens)
+│   │   │   ├── sync.py             incremental pull, local copy, snapshots, retention, data-quality warnings
+│   │   │   ├── scheduler.py        schedules, timing, the pipeline job, catch-up, auto-proposed tasks
+│   │   │   ├── vendor_tasks.py     approved write-back, outcomes read back as feedback
+│   │   │   ├── sops.py             SOP loading, alert → SOP, escalation, filled-in steps
+│   │   │   ├── schema_spec.py      the daily column schema
+│   │   │   ├── ingest.py           CSV / ZIP import with column mapping; build_dataset (shared with sync)
 │   │   │   ├── colstore.py         memory-mapped .npy column store
 │   │   │   ├── features.py         the 16 detection signals (ships in model bundles)
 │   │   │   ├── detectors.py        z-score, Isolation Forest, LOF, autoencoder, feedback re-ranker
@@ -792,11 +942,11 @@ inventory_anomaly/
 │   │   └── assistant/
 │   │       ├── agents.py           Google ADK agent team, prompts, guardrails
 │   │       ├── engine.py           LiteLLM model, runner, SSE streaming, sessions
-│   │       ├── tools.py            the 24-tool catalogue (shared with MCP)
+│   │       ├── tools.py            the 32-tool catalogue (shared with MCP)
 │   │       ├── adk_tools.py        async adapters that fill ids from the UI selection
 │   │       ├── context_pack.py     "current state" injected into every prompt
 │   │       ├── proposals.py        confirm-before-run job proposals
-│   │       ├── knowledge.py        BM25 search over README, GUIDE and story
+│   │       ├── knowledge.py        BM25 search over README, GUIDE, story, connector contract and SOPs
 │   │       ├── plain_language.py   labels and glossary
 │   │       ├── usage.py            tokens and cost per agent / model
 │   │       ├── settings.py         gateway settings, TLS
@@ -805,11 +955,12 @@ inventory_anomaly/
 ├── frontend/
 │   ├── index.html · package.json · package-lock.json · vite.config.ts · tsconfig.json
 │   └── src/
-│       ├── pages/                  Overview, Executive, Story, Data, Train, Act, Models, Experiments, Assistant, Settings
-│       ├── components/             AlertQueue, AnomalyDashboard, InvestigationPlanner, SeriesDrilldown, TriagePanel, charts, assistant/
+│       ├── pages/                  Overview, Executive, Story, Data, Train, Act, Schedules, Models, Experiments, Assistant, Settings
+│       ├── components/             ConnectorsCard, SopChecklist, ProposalCard, AlertQueue, AnomalyDashboard, InvestigationPlanner, SeriesDrilldown, TriagePanel, charts, assistant/
 │       ├── assistant/              chat context, speech input
 │       └── hooks/, api.ts, types.ts, styles.css
-└── data/                           runtime only, git-ignored (created on start)
+├── data/                           runtime only, git-ignored (created on start)
+└── data_vendor/                    the demo vendor's SQLite database, git-ignored
 ```
 
 ---
@@ -824,7 +975,8 @@ knowledge file. `.gitattributes` pins line endings, so `start.sh` keeps LF and `
 
 | Ignored | Why |
 |---|---|
-| `data/`, `data_smoke*/` | datasets (hundreds of MB), models, runs, triage, exports, **`settings.json` with the gateway key**, assistant DB; recreated on start |
+| `data/`, `data_smoke*/` | snapshots (hundreds of MB), models, runs, triage, exports, connectors (**with their tokens**), schedules, **`settings.json` with the gateway key**, assistant DB; recreated on start |
+| `data_vendor*/` | the demo vendor's SQLite database; re-seeded on start |
 | `*.joblib`, `*.onnx`, `inventory_sentinel_*.zip` | downloaded model files and bundles |
 | `.venv/`, `__pycache__/`, tool caches | rebuilt by the start scripts |
 | `frontend/node_modules/`, `frontend/dist/` | rebuilt by `npm install` / `npm run build` |
@@ -854,7 +1006,11 @@ at start-up (`/api/health` lists it) and handles it as follows:
 |---|---|
 | "needs Python 3.11 to 3.14" / npm not found | install a supported Python (tick "Add to PATH") and Node.js LTS, re-run the start script |
 | Isolation Forest / LOF say "numpy fallback" | Smart App Control blocks scikit-learn's compiled modules; the built-in engine gives the same method |
-| Generate refuses the size | rows = stores x SKUs x days must be within the limits; `SENTINEL_MIN_ROWS=50000` for quick tests |
+| "Could not reach … at http://127.0.0.1:8020/mcp/" | the demo vendor is not running: start it (`startup.bat` / `./start.sh` do) or connect your own system |
+| Sync says the vendor "is not ready yet" | the demo vendor is still seeding (its dashboard shows progress); try again in a minute |
+| "No new trading days since the last sync" | the vendor's day has not closed; on the demo vendor press **Close today's trading (+1 day)**. See SOP `data-feed-failure` |
+| A scheduled run failed | Schedules → run history shows the error kind and the SOP; **Test connection** on the connector, then **Run now** |
+| Schedules run twice | serve the API with one worker (the scheduler lives in the API process), or set `SENTINEL_SCHEDULER=off` on extra processes |
 | Retrain with feedback is greyed out | needs 30 reviewed alerts with at least 5 real and 5 false alarms; simulate a week or review more |
 | Import says a column is missing | map it with the JSON column map, e.g. `{"counted_closing": "physical_qty"}` |
 | Chat says "configure the gateway" | Settings: URL, key, Connect, model, Test, Save |

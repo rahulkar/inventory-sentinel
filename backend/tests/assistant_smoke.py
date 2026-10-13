@@ -1,6 +1,9 @@
-"""Offline end-to-end check of the assistant: settings, streaming chat with tool calls, proposals, sessions, MCP.
+"""Offline end-to-end check of the assistant: settings, streaming chat with tool calls, proposals, sessions, MCP,
+plus the operations tools (SOPs, schedules, live vendor lookups) when a connector is set up.
 
     python backend/tests/assistant_smoke.py [--base http://127.0.0.1:8000] [--gateway URL --key KEY --model ID]
+
+It REWRITES the server's assistant settings: point it at a test server (SENTINEL_DATA_DIR=data_smoke...), not your own.
 
 Without --gateway it starts the fake OpenAI-compatible gateway on 127.0.0.1:8111 in a thread.
 """
@@ -172,12 +175,37 @@ async def mcp_check():
             res = await session.call_tool("list_datasets", {})
             payload = json.loads(res.content[0].text) if res.content and getattr(res.content[0], "text", None) else {}
             docs = await session.call_tool("search_docs", {"query": "how is ROI calculated"})
+            sop = await session.call_tool("get_sop", {"sop_id": "missing-inventory-response"})
+            sched = await session.call_tool("list_schedules", {})
+            res = await session.read_resource("sentinel://sop/counting-error")
+            sop_payload = json.loads(sop.content[0].text)
+            sched_payload = json.loads(sched.content[0].text)
+            text = res.contents[0].text if res.contents else ""
+            check("mcp: get_sop", sop_payload.get("status") == "ok" and sop_payload["sop"]["id"] == "missing-inventory-response", sop_payload)
+            check("mcp: list_schedules", sched_payload.get("status") == "ok", sched_payload)
+            check("mcp: sentinel://sop resource", "Counting error" in text and "Steps" in text, text[:200])
             return names, payload, docs
 
 names, payload, docs = asyncio.run(mcp_check())
-check("mcp: tools listed", len(names) >= 24, names)
+check("mcp: tools listed", len(names) >= 32 and {"get_sop", "list_schedules", "vendor_lookup"} <= set(names), names)
 check("mcp: list_datasets works", payload.get("status") == "ok", payload)
 print(f"     mcp tools: {len(names)}; datasets via mcp: {payload.get('count')}")
+
+# ------------------------------------------------------------------ operations: SOPs, schedules, live vendor data
+if not args.gateway:
+    ev = chat("What is the SOP when a count looks wrong?", session_id=sid)
+    called = [d["name"] for e, d in ev if e == "tool_call"]
+    text = "".join(d["delta"] for e, d in ev if e == "text")
+    check("chat: SOP via the operations coordinator", "get_sop" in called and "counting-error" in text, {"called": called, "text": text[:200]})
+    ev = chat("Which schedules are set up?", session_id=sid)
+    check("chat: list schedules", "list_schedules" in [d["name"] for e, d in ev if e == "tool_call"], [e for e, _ in ev])
+    s, conns = call("GET", "/api/connectors")
+    if s == 200 and conns and (conns[0].get("last_sync") or {}).get("status") == "ok":
+        ev = chat("What is the stock of K00001 at S001 right now?", session_id=sid)
+        text = "".join(d["delta"] for e, d in ev if e == "text")
+        check("chat: live vendor lookup", "vendor_lookup" in [d["name"] for e, d in ev if e == "tool_call"] and "on hand" in text, text[:200])
+    else:
+        print("     (no synced connector on this server: live lookup check skipped)")
 
 s, _ = call("DELETE", f"/api/assistant/sessions/{sid}")
 check("session deleted", s == 200, _)

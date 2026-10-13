@@ -480,7 +480,7 @@ table.data tr.muted td { color: var(--text-3); }
   .grid-side.narrow { grid-template-columns: minmax(0, 1fr) 360px; }
 }
 @media (max-width: 1099px) {
-  .grid-side, .grid-side.narrow { grid-template-columns: 1fr; }
+  .grid-side, .grid-side.narrow { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 1199px) {
   .story-section, .story-section.flip, .story-section.wide, .story-section.wide.flip { grid-template-columns: 240px minmax(0, 1fr); }

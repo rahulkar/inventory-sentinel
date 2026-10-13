@@ -9,9 +9,10 @@ the few places that look wrong today.
 ## The data
 Data the business already has: daily stock counts (expected from the books versus counted on the shelf), deliveries,
 sales, returns, transfers and adjustments, till behaviour (manually keyed items, voided lines, overrides, after-hours
-scans), store and category details, and past loss-prevention flags. The demo uses a realistic synthetic copy: 80 stores x
-500 SKUs x 125 days = 5 million store-SKU-days, with seven kinds of problem injected and an answer key kept aside to mark
-the homework.
+scans), store and category details, and past loss-prevention flags. Sentinel reads it straight from the inventory system
+over MCP (a "connector"), keeps a rolling snapshot of the last 120 days, and learns what normal looks like for that
+retailer's own stores. The demo connects to a simulated vendor back-office whose data has seven kinds of problem injected
+and an answer key kept aside (inside the vendor, never a model input) to mark the homework.
 
 ## What "unusual" means
 The methods learn what normal looks like from history, with no labels: how big the daily gap between expected and
@@ -53,6 +54,8 @@ rank actions by value) answer other questions: customer lifetime value, vendor p
 markdown timing, store staffing, influencer matching and loyalty engagement.
 
 ## Getting to live
-Today: a laptop demo on synthetic data. Next: a pilot on one region's real counts and till logs with loss-prevention
-reviewing the alerts. Then: nightly scoring in the data platform, alerts in the warehouse team's task tool, and the model
-retrained monthly with their feedback.
+Today: a laptop demo against a simulated vendor, already wired the way it would run live: a nightly schedule syncs the
+vendor, scores the new day with the chosen model (or retrains one), and proposes recounts and investigations from the SOPs
+into the vendor's own task inbox once someone approves them. Next: point the connector at one region's real system (an MCP
+adapter over its stock and till data) with loss-prevention reviewing the alerts. Then: every region, with the model
+retrained on a schedule from the teams' closed tasks.

@@ -76,6 +76,14 @@ def decide(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> tuple
                 return None, None, f"There are {payload['total_matching']} matching alerts; the top one is {payload['alerts'][0]['alert_id'] if payload['alerts'] else 'none'}."
             if "jobs" in payload:
                 return None, None, f"There are {payload.get('n_active', 0)} active jobs."
+            if "schedules" in payload:
+                return None, None, f"You have {payload.get('count', 0)} schedule(s)" + (f"; '{payload['schedules'][0]['name']}' runs next at {payload['schedules'][0]['next_run_at_utc']} UTC." if payload.get("schedules") else ".")
+            if "sop" in payload and "steps" in payload:
+                return None, None, f"Follow SOP {payload['sop']['id']} (v{payload['sop']['version']}): first, {payload['steps'][0]['text'] if payload['steps'] else 'see the SOP'}"
+            if payload.get("live") and "on_hand" in payload:
+                return None, None, f"Live from the vendor: {payload['on_hand']} on hand as of {payload.get('as_of')}."
+            if "connectors" in payload:
+                return None, None, f"You have {payload.get('count', 0)} vendor connector(s)."
             if payload.get("status") == "error":
                 return None, None, f"That did not work: {payload.get('error_message')}"
         return None, None, "Done. " + json.dumps(payload)[:160]
@@ -89,7 +97,17 @@ def decide(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> tuple
     # (tool, args, owning specialist) — like a real model, transfer when the current agent lacks the tool.
     want: tuple[str, dict[str, Any], str | None] | None = None
     m = re.search(r"\b(a\d{6})\b", user)
-    if m:
+    cur = (genuine[-1] if genuine else "").lower()  # operations routes look at the latest question only
+    stock = re.search(r"stock of (k\d{5}) at (s\d{3})", cur)
+    if "sop" in cur or "procedure" in cur:
+        want = ("get_sop", {"likely_type": "counting_error"}, "ops_coordinator")
+    elif stock:
+        want = ("vendor_lookup", {"store_id": stock.group(2).upper(), "sku_id": stock.group(1).upper()}, "data_analyst")
+    elif "schedule" in cur:
+        want = ("list_schedules", {}, "ops_coordinator")
+    elif "connector" in cur:
+        want = ("list_connectors", {}, "ops_coordinator")
+    elif m:
         want = ("explain_alert", {"alert_id": m.group(1).upper()}, "alert_investigator")
     elif "hours" in user or "plan" in user:
         want = ("investigation_plan", {"hours": 120}, "lp_planner")
