@@ -214,9 +214,30 @@ export function EmptyChartArt(props: Props) {
   );
 }
 
-export function EmptyState({ art, children }: { art: React.ReactNode; children: React.ReactNode }) {
+/** One pin on a map with the comparison slots around it left blank. */
+export function SinglePinArt(props: Props) {
   return (
-    <div className="empty with-art">
+    <Svg title="A single location pin with no other locations to compare" {...props}>
+      <path d="M40 52 l52 -16 l56 16 l52 -16 v84 l-52 16 l-56 -16 l-52 16z" fill={PALE} />
+      <path d="M92 36 v84 M148 52 v84" stroke={LIGHT} strokeWidth="2" />
+      {[
+        [62, 102],
+        [176, 92],
+        [196, 58],
+      ].map(([x, y]) => (
+        <circle key={x} cx={x} cy={y} r="8" fill={WHITE} stroke={LIGHT} strokeWidth="2" strokeDasharray="4 3" />
+      ))}
+      <path d="M120 40 a18 18 0 0 1 18 18 c0 14 -18 32 -18 32 s-18 -18 -18 -32 a18 18 0 0 1 18 -18z" fill={NAVY} />
+      <circle cx="120" cy="58" r="7" fill={WHITE} />
+      <ellipse cx="120" cy="96" rx="12" ry="3.5" fill={LIGHT} />
+      <circle cx="146" cy="34" r="4" fill={AMBER} />
+    </Svg>
+  );
+}
+
+export function EmptyState({ art, children, className = "" }: { art: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`empty with-art ${className}`}>
       <div className="empty-art">{art}</div>
       <div>{children}</div>
     </div>

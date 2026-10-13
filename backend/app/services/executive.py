@@ -68,26 +68,8 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
         if p_end >= first and (p_end - p_start).days + 1 >= 7:
             prev = _accuracy(ds, p_start, p_end, region, store_id, category)
 
-    def trend(col: str, label: str, pick: str | None) -> dict[str, Any]:
-        # whole weeks counted back from the period end; a leftover stub of 1-6 days at the start is left out
-        n_weeks = max(1, n_days // 7)
-        weeks = [end - timedelta(days=7 * (n_weeks - 1 - i) + 6) for i in range(n_weeks)]
-        rows = [{"week": w.isoformat()} for w in weeks]
-        if not len(a):
-            return {"series": [], "rows": rows}
-        if pick:
-            names = [str(a.loc[a[col] == pick, label].iloc[0])] if (a[col] == pick).any() else []
-            keys = [pick] if names else []
-        else:
-            g = op.groupby([col, label])["revenue"].sum().sort_values(ascending=False).head(3) if len(op) else a.groupby([col, label]).size().sort_values(ascending=False).head(3)
-            keys, names = [str(k[0]) for k in g.index], [str(k[1]) for k in g.index]
-        sd = pd.to_datetime(a["start_date"]).dt.date
-        bucket = sd.map(lambda d: n_weeks - 1 - (end - d).days // 7)
-        for k, name in zip(keys, names):
-            counts = bucket[a[col] == k].value_counts()
-            for i, r in enumerate(rows):
-                r[name] = int(counts.get(i, 0))
-        return {"series": names, "rows": rows}
+    # unusual patterns: open cases by the model's provisional cause, most cases first
+    pat = op.groupby("likely_type").agg(cases=("alert_key", "size"), revenue=("revenue", "sum")).sort_values(["cases", "revenue"], ascending=False) if len(op) else pd.DataFrame(columns=["cases", "revenue"])
 
     top = op.groupby(["store_id", "store_name"])["revenue"].sum().sort_values(ascending=False).head(5) if len(op) else pd.Series(dtype=float)
     stores = ds.stores
@@ -110,8 +92,7 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
         sla_target_pct=config.EXEC_SLA_TARGET_PCT,
         sla_days=sla,
         overdue_cases=overdue,
-        store_trend=trend("store_id", "store_name", store_id),
-        category_trend=trend("category", "category", category),
+        patterns=[{"type": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2)} for k, r in pat.iterrows()],
         top_locations=[{"store_id": k[0], "label": k[1], "value_gbp": round(float(v), 2)} for k, v in top.items()],
     )
 

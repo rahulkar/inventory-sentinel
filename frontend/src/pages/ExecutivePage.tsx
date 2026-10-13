@@ -1,17 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Clock, Download, Info, MapPin, Play, ShieldCheck, Tag, TriangleAlert, X } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { useApp } from "../context";
 import { C } from "../components/Charts";
-import { WarehouseArt } from "../components/Illustrations";
+import { EmptyChartArt, EmptyClipboardArt, EmptyState, SinglePinArt, WarehouseArt } from "../components/Illustrations";
 import { JobProgress } from "../components/JobProgress";
 import { Spinner } from "../components/Layout";
 import { PIPELINE_STEPS, usePipeline } from "../hooks/usePipeline";
-import type { ExecTrend, ExecutiveSummary } from "../types";
-import { compactGbp, gbp, num } from "../utils";
+import type { ExecutiveSummary } from "../types";
+import { compactGbp, gbp, num, TYPE_HELP, TYPE_LABEL } from "../utils";
 
-/** Executive mode home: the board overview on one screen. Four numbers, weekly trends, where the money is, how fast cases close. */
+/** Executive mode home: the board overview on one screen. Four numbers, what kind of problems are open, where the money is, how fast cases close. */
 export function ExecutivePage() {
   const { runs, cancelJob } = useApp();
   const pipe = usePipeline();
@@ -38,7 +38,6 @@ const PERIODS = [
   { days: 90, label: "Last 90 days" },
   { days: 0, label: "All data" },
 ];
-const SERIES = ["#1a9fe0", "#2f3a4a", "#9b6cf0"]; // sky, charcoal, violet
 const RED = "#d03b3b";
 const AMBER = "#e59a00";
 
@@ -205,47 +204,8 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
           </div>
 
           <div className="exov-row2">
-            <TrendCard title="Anomaly trend by store" sub={filters.location.startsWith("s:") ? "Weekly new alerts • selected store" : "Weekly new alerts • top stores by revenue at risk"} trend={data.store_trend} kind="line" />
-            <TrendCard title="Anomaly trend by category" sub={filters.category ? "Weekly new alerts • selected category" : "Weekly new alerts • top categories by revenue at risk"} trend={data.category_trend} kind="bar" />
-          </div>
-
-          <div className="exov-row3">
-            <div className="card exov-card">
-              <div className="exov-card-head">
-                <div>
-                  <h2>Risk exposure by location</h2>
-                  <p>{data.top_locations.length > 1 ? `Top ${data.top_locations.length} stores` : "Store"} (revenue at risk on open cases, £)</p>
-                </div>
-                <div className="exov-legend">
-                  <span>
-                    <i style={{ background: RED }} />
-                    Above {compactGbp(data.threshold_gbp)}
-                  </span>
-                  <span>
-                    <i style={{ background: AMBER }} />
-                    Below {compactGbp(data.threshold_gbp)}
-                  </span>
-                </div>
-              </div>
-              {data.top_locations.length ? (
-                <ResponsiveContainer width="100%" height={data.top_locations.length * 36 + 40}>
-                  <BarChart data={data.top_locations} layout="vertical" margin={{ top: 0, right: 64, left: 0, bottom: 4 }}>
-                    <CartesianGrid horizontal={false} stroke={C.grid} />
-                    <XAxis type="number" tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={(v: number) => compactGbp(v)} />
-                    <YAxis type="category" dataKey="label" width={170} tick={tick} axisLine={axisLine} tickLine={false} />
-                    <Tooltip cursor={{ fill: "rgba(26,159,224,0.06)" }} formatter={(v) => [gbp.format(Number(v)), "Revenue at risk"]} />
-                    <Bar dataKey="value_gbp" barSize={16} radius={[0, 3, 3, 0]} isAnimationActive={false}>
-                      {data.top_locations.map((l) => (
-                        <Cell key={l.store_id} fill={l.value_gbp > data.threshold_gbp ? RED : AMBER} />
-                      ))}
-                      <LabelList dataKey="value_gbp" position="right" formatter={(v) => money(Number(v))} style={{ fontSize: 12, fontWeight: 700, fill: "#121826" }} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="muted">No open cases in this selection.</p>
-              )}
-            </div>
+            <PatternsCard data={data} filters={filters} onClear={() => set({ location: "", category: "" })} />
+            <ExposureCard data={data} filters={filters} onAllLocations={() => set({ location: "" })} />
 
             <div className="card exov-card exov-res">
               <h2>Resolution performance</h2>
@@ -316,60 +276,135 @@ function Kpi({ icon, label, value, sub, title }: { icon: ReactNode; label: strin
 
 const tick = { fill: C.text, fontSize: 12 };
 const axisLine = { stroke: C.grid };
-const yLabel = { value: "New alerts", angle: -90, position: "insideLeft" as const, style: { fontSize: 11, fill: C.textMuted, textAnchor: "middle" as const } };
 
-function TrendCard({ title, sub, trend, kind }: { title: string; sub: string; trend: ExecTrend; kind: "line" | "bar" }) {
-  const rows = trend.rows.map((r) => ({ ...r, label: dayLabel(r.week) }));
-  const labels = rows.length <= 6; // value labels on every point only while they stay readable
-  const valueLabel = { fontSize: 11, fontWeight: 700, fill: C.text };
+/** "North · Womenswear": the place and category the figures are narrowed to, or "" for everything. */
+function scopeName(f: Filters, data: ExecutiveSummary): string {
+  const kind = f.location.slice(0, 2);
+  const loc = f.location.slice(2);
+  const place = kind === "r:" ? loc : kind === "s:" ? data.options.stores.find((s) => s.store_id === loc)?.store_name ?? loc : "";
+  return [place, f.category ? cap(f.category) : ""].filter(Boolean).join(" · ");
+}
+const scopeText = (f: Filters, data: ExecutiveSummary) => (scopeName(f, data) ? ` in ${scopeName(f, data)}` : "");
+
+function CardEmpty({ art, title, children }: { art: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <EmptyState className="exov-empty" art={art}>
+      <b>{title}</b>
+      {children}
+    </EmptyState>
+  );
+}
+
+/** Open cases by the model's likely cause: what kind of problem the board is looking at. */
+function PatternsCard({ data, filters, onClear }: { data: ExecutiveSummary; filters: Filters; onClear: () => void }) {
+  const max = Math.max(1, ...data.patterns.map((p) => p.cases));
+  const narrowed = Boolean(filters.location || filters.category);
+  const period = PERIODS.find((p) => p.days === filters.days)?.label.toLowerCase() ?? "this period";
   return (
     <div className="card exov-card">
       <div className="exov-card-head">
         <div>
-          <h2>{title}</h2>
-          <p>{sub}</p>
-        </div>
-        <div className="exov-legend">
-          {trend.series.map((s, i) => (
-            <span key={s}>
-              <i className="round" style={{ background: SERIES[i] }} />
-              {cap(s)}
-            </span>
-          ))}
+          <h2>Unusual patterns</h2>
+          <p>
+            {num.format(data.open_cases)} open case{data.open_cases === 1 ? "" : "s"}
+            {scopeText(filters, data)} · likely cause
+          </p>
         </div>
       </div>
-      {trend.series.length ? (
-        <ResponsiveContainer width="100%" height={210}>
-          {kind === "line" ? (
-            <LineChart data={rows} margin={{ top: 18, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke={C.grid} />
-              <XAxis dataKey="label" tick={tick} axisLine={axisLine} tickLine={false} />
-              <YAxis allowDecimals={false} tick={tick} axisLine={false} tickLine={false} width={44} label={yLabel} />
-              <Tooltip />
-              {trend.series.map((s, i) => (
-                <Line key={s} name={cap(s)} dataKey={(r: Record<string, number>) => r[s]} stroke={SERIES[i]} strokeWidth={2} dot={{ r: 3.5, fill: SERIES[i] }} isAnimationActive={false}>
-                  {labels ? <LabelList position="top" offset={8} style={valueLabel} /> : null}
-                </Line>
+      {data.patterns.length ? (
+        <>
+          <ul className="exov-bars" aria-label="Open cases by likely cause">
+            {data.patterns.map((p) => (
+              <li key={p.type} title={`${TYPE_HELP[p.type] ?? ""} ${money(p.revenue_gbp)} revenue at risk.`.trim()}>
+                <span className="exov-bars-label">{TYPE_LABEL[p.type] ?? cap(p.type)}</span>
+                <span className="exov-bars-track" aria-hidden="true">
+                  <span style={{ width: `${(p.cases / max) * 100}%` }} />
+                </span>
+                <b>{num.format(p.cases)}</b>
+              </li>
+            ))}
+          </ul>
+          <div className="exov-caveat">
+            <IconInfo />
+            <span>
+              <b>Suspected causes, verification required.</b> These are the model's provisional triage labels; they do not prove theft or error until a case is investigated.
+            </span>
+          </div>
+        </>
+      ) : (
+        <CardEmpty art={<EmptyClipboardArt />} title="No open cases here">
+          <span>
+            Nothing is waiting for review{scopeText(filters, data)} for {period}.
+          </span>
+          {narrowed ? (
+            <button className="btn sm link" onClick={onClear}>
+              Show all locations and categories
+            </button>
+          ) : null}
+        </CardEmpty>
+      )}
+    </div>
+  );
+}
+
+/** Revenue at risk ranked by store. Ranking needs more than one store, so a single-store filter gets an explanation instead. */
+function ExposureCard({ data, filters, onAllLocations }: { data: ExecutiveSummary; filters: Filters; onAllLocations: () => void }) {
+  const oneStore = filters.location.startsWith("s:");
+  const region = filters.location.startsWith("r:") ? filters.location.slice(2) : "";
+  const n = data.top_locations.length;
+  const sub = oneStore
+    ? "Compares stores by revenue at risk on open cases"
+    : `${n > 1 ? `Top ${n} stores` : "Stores"}${region ? ` in ${region}` : ""}${filters.category ? ` · ${cap(filters.category)}` : ""} (revenue at risk on open cases, £)`;
+  return (
+    <div className="card exov-card">
+      <div className="exov-card-head">
+        <div>
+          <h2>Risk exposure by location</h2>
+          <p>{sub}</p>
+        </div>
+        {!oneStore && n ? (
+          <div className="exov-legend">
+            <span>
+              <i style={{ background: RED }} />
+              Above {compactGbp(data.threshold_gbp)}
+            </span>
+            <span>
+              <i style={{ background: AMBER }} />
+              Below {compactGbp(data.threshold_gbp)}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {oneStore ? (
+        <CardEmpty art={<SinglePinArt />} title="One store selected">
+          <span>
+            This view ranks locations against each other. {scopeName(filters, data)} has {money(data.revenue_at_risk_gbp)} at risk on {num.format(data.open_cases)} open case
+            {data.open_cases === 1 ? "" : "s"}.
+          </span>
+          <button className="btn sm link" onClick={onAllLocations}>
+            Compare all locations
+          </button>
+        </CardEmpty>
+      ) : n ? (
+        <ResponsiveContainer width="100%" height={n * 36 + 40}>
+          <BarChart data={data.top_locations} layout="vertical" margin={{ top: 0, right: 56, left: 0, bottom: 4 }}>
+            <CartesianGrid horizontal={false} stroke={C.grid} />
+            <XAxis type="number" tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={(v: number) => compactGbp(v)} />
+            <YAxis type="category" dataKey="label" width={170} tick={tick} axisLine={axisLine} tickLine={false} />
+            <Tooltip cursor={{ fill: "rgba(26,159,224,0.06)" }} formatter={(v) => [gbp.format(Number(v)), "Revenue at risk"]} />
+            <Bar dataKey="value_gbp" barSize={16} radius={[0, 3, 3, 0]} isAnimationActive={false}>
+              {data.top_locations.map((l) => (
+                <Cell key={l.store_id} fill={l.value_gbp > data.threshold_gbp ? RED : AMBER} />
               ))}
-            </LineChart>
-          ) : (
-            <BarChart data={rows} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barGap={3}>
-              <CartesianGrid vertical={false} stroke={C.grid} />
-              <XAxis dataKey="label" tick={tick} axisLine={axisLine} tickLine={false} />
-              <YAxis allowDecimals={false} tick={tick} axisLine={false} tickLine={false} width={44} label={yLabel} />
-              <Tooltip cursor={{ fill: "rgba(26,159,224,0.06)" }} />
-              {trend.series.map((s, i) => (
-                <Bar key={s} name={cap(s)} dataKey={(r: Record<string, number>) => r[s]} fill={SERIES[i]} maxBarSize={22} isAnimationActive={false}>
-                  {labels ? <LabelList position="top" style={valueLabel} /> : null}
-                </Bar>
-              ))}
-            </BarChart>
-          )}
+              <LabelList dataKey="value_gbp" position="right" formatter={(v) => money(Number(v))} style={{ fontSize: 12, fontWeight: 700, fill: "#121826" }} />
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       ) : (
-        <p className="muted">No new alerts in this selection.</p>
+        <CardEmpty art={<EmptyChartArt />} title="No revenue at risk here">
+          <span>No store has open cases{scopeText(filters, data)} in this period, so there is nothing to rank.</span>
+        </CardEmpty>
       )}
-      <p className="exov-note">New alerts are different from currently open cases.</p>
     </div>
   );
 }

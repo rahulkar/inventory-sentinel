@@ -588,8 +588,7 @@ class ExecutiveSummary(BaseModel):
     sla_target_pct: float
     sla_days: int
     overdue_cases: int
-    store_trend: dict[str, Any]  # {series: [names], rows: [{week, <name>: n}]}
-    category_trend: dict[str, Any]
+    patterns: list[dict[str, Any]]  # [{type, cases, revenue_gbp}] open cases by likely type, most first
     top_locations: list[dict[str, Any]]
 
 

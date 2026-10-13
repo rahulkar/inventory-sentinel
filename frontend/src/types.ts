@@ -1058,11 +1058,6 @@ export interface SchedulerStatus {
   enabled: number;
 }
 
-export interface ExecTrend {
-  series: string[];
-  rows: ({ week: string } & Record<string, number | string>)[];
-}
-
 export interface ExecutiveSummary {
   period: { start: string; end: string; days: number };
   options: { regions: string[]; stores: { store_id: string; store_name: string }[]; categories: string[] };
@@ -1078,8 +1073,7 @@ export interface ExecutiveSummary {
   sla_target_pct: number;
   sla_days: number;
   overdue_cases: number;
-  store_trend: ExecTrend;
-  category_trend: ExecTrend;
+  patterns: { type: string; cases: number; revenue_gbp: number }[];
   top_locations: { store_id: string; label: string; value_gbp: number }[];
 }
 
