@@ -56,7 +56,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 }
 /* one row when everything fits; otherwise the nav moves to its own full-width row (never clipped silently) */
 .topbar-inner {
-  max-width: 1680px; margin: 0 auto; padding: 0 var(--page-pad);
+  margin: 0 auto; padding: 0 var(--page-pad);
   display: flex; align-items: center; gap: 16px; height: var(--topbar-h);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; background: transparent; border: 0; color: #fff; cursor: pointer; font-family: inherit; padding: 0; flex-shrink: 0; white-space: nowrap; }
@@ -111,7 +111,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 }
 
 /* ---------- layout ---------- */
-.page { max-width: 1360px; margin: 0 auto; padding: var(--page-pad) var(--page-pad) calc(var(--page-pad) + 64px); } /* the bottom clears the chat button */
+.page { margin: 0 auto; padding: var(--page-pad) var(--page-pad) calc(var(--page-pad) + 64px); } /* the bottom clears the chat button */
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .page-header p { color: var(--text-2); max-width: 820px; margin: 0; }
 
@@ -159,6 +159,9 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 
 /* ---------- forms ---------- */
 label.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-2); font-weight: 600; min-width: 0; }
+/* full-width pages: a single field stays a readable size instead of spanning the card */
+label.field > input, label.field > select, label.field > textarea { max-width: 720px; }
+.run-bar label.field > select { max-width: none; }
 label.field .hint { font-weight: 400; color: var(--text-3); font-size: 12px; }
 /* a picker with its action button: the select and the button share a bottom edge, their hints sit underneath */
 .run-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: end; }
@@ -231,6 +234,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary-2); wi
 
 /* ---------- tables ---------- */
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 8px; max-height: 420px; -webkit-overflow-scrolling: touch; }
+/* a page's main list grows with the window instead of stopping at a fixed height */
+.table-wrap.fill { max-height: max(380px, calc(100dvh - var(--topbar-h) - 390px)); }
 table.data { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
 table.data th, table.data td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; background: var(--surface); }
 table.data th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-2); font-weight: 600; z-index: 2; }
@@ -357,6 +362,8 @@ details.tech .tech-body { padding: 4px 14px 14px; display: flex; flex-direction:
 .story-section.wide { grid-template-columns: 260px minmax(0, 1fr); }
 .story-section.wide.flip { grid-template-columns: minmax(0, 1fr) 260px; }
 .story-art svg:not(.lucide) { width: 100%; height: auto; display: block; }
+.story-text p { max-width: 78ch; }
+.card > p { max-width: 90ch; }
 .story-text h2 { font-size: 24px; margin-bottom: 10px; }
 .story-body p { font-size: 15px; color: var(--text-2); }
 .story-list { margin: 0 0 10px; padding-left: 18px; color: var(--text-2); font-size: 15px; display: grid; gap: 6px; }
@@ -445,9 +452,9 @@ details.tech .tech-body { padding: 4px 14px 14px; display: flex; flex-direction:
 .chat-empty { margin: auto; text-align: center; max-width: 320px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .chat-empty .muted { margin-bottom: 6px; }
 .chat-empty-art { width: 200px; max-width: 70%; height: auto; margin: 0 auto 4px; display: block; }
-.msg { display: flex; flex-direction: column; gap: 6px; max-width: 92%; min-width: 0; }
-.msg.user { align-self: flex-end; align-items: flex-end; max-width: 85%; }
-.msg.assistant { align-self: flex-start; width: 92%; }
+.msg { display: flex; flex-direction: column; gap: 6px; max-width: min(92%, 860px); min-width: 0; }
+.msg.user { align-self: flex-end; align-items: flex-end; max-width: min(85%, 760px); }
+.msg.assistant { align-self: flex-start; width: min(92%, 860px); }
 .msg.system { align-self: center; font-size: 11.5px; color: var(--text-3); background: var(--surface-2); border: 1px dashed var(--border); border-radius: 999px; padding: 3px 10px; max-width: 100%; }
 .msg-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-2); }
 .msg-head .agent-avatar { box-shadow: none; border: 0; }
@@ -699,7 +706,7 @@ table.data tr.best td { background: #f0f7ff; }
 .exec-top .mode-switch button.on { background: #1a9fe0; color: #fff; }
 .exec-top .mode-switch button:focus-visible { outline-color: var(--primary-2); }
 .exec-top .jobs-pill { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
-.exec-tabs { max-width: 1680px; margin: 0 auto; padding: 0 var(--page-pad); display: flex; gap: 26px; overflow-x: auto; scrollbar-width: none; }
+.exec-tabs { margin: 0 auto; padding: 0 var(--page-pad); display: flex; gap: 26px; overflow-x: auto; scrollbar-width: none; }
 .exec-tabs::-webkit-scrollbar { display: none; }
 .exec-tabs button { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px; font-weight: 500; color: var(--text-2); background: transparent; border: 0; border-bottom: 3px solid transparent; padding: 10px 2px 9px; cursor: pointer; white-space: nowrap; }
 .exec-tabs button:hover { color: var(--text); }
@@ -762,6 +769,21 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-empty > div:last-child { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); max-width: 320px; }
 .exov-empty b { color: var(--text); font-size: 14px; }
 
+/* the overview is one board screen: on a desktop it stretches to the viewport height so the cards fill it */
+.exov-chart { flex: 1; min-width: 0; }
+@media screen and (min-width: 992px) and (min-height: 640px) {
+  .page:has(> .exec > .exov) { display: flex; flex-direction: column; min-height: calc(100dvh - var(--topbar-h)); }
+  .page > .exec:has(> .exov), .exec > .exov, .exov > .exov-body { flex: 1; }
+  .exov-body { display: flex; flex-direction: column; }
+  .exov-row2 { flex: 1; min-height: 0; }
+  .exov-bars { flex: 1; justify-content: space-evenly; max-height: 560px; }
+}
+@media (min-width: 1600px) {
+  .exov-kpi { padding: 18px 26px; }
+  .exov-kpi-value { font-size: 36px; }
+  .exov-kpi-label, .exov-kpi-sub { font-size: 15px; }
+  .exov-bars li { font-size: 14px; }
+}
 .exov-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); border-bottom: 4px solid #1a9fe0; padding-bottom: 10px; }
 .exov-foot > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 

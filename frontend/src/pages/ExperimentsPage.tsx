@@ -95,7 +95,7 @@ export function ExperimentsPage() {
               {num.format(ds.n_rows)} rows · exam from {ds.test_from_date}
             </span>
           </div>
-          <div className="table-wrap" style={{ maxHeight: 300 }}>
+          <div className="table-wrap fill">
             <table className="data">
               <thead>
                 <tr>

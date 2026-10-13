@@ -356,13 +356,14 @@ function ExposureCard({ data, filters, onAllLocations }: { data: ExecutiveSummar
           </button>
         </CardEmpty>
       ) : n ? (
-        <ResponsiveContainer width="100%" height={n * 36 + 40}>
+        <div className="exov-chart" style={{ minHeight: n * 36 + 40 }}>
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data.top_locations} layout="vertical" margin={{ top: 0, right: 56, left: 0, bottom: 4 }}>
             <CartesianGrid horizontal={false} stroke={C.grid} />
             <XAxis type="number" tick={tick} axisLine={axisLine} tickLine={false} tickFormatter={(v: number) => compactGbp(v)} />
             <YAxis type="category" dataKey="label" width={170} tick={tick} axisLine={axisLine} tickLine={false} />
             <Tooltip cursor={{ fill: "rgba(26,159,224,0.06)" }} formatter={(v) => [gbp.format(Number(v)), "Revenue at risk"]} />
-            <Bar dataKey="value_gbp" barSize={16} radius={[0, 3, 3, 0]} isAnimationActive={false}>
+            <Bar dataKey="value_gbp" maxBarSize={28} radius={[0, 3, 3, 0]} isAnimationActive={false}>
               {data.top_locations.map((l) => (
                 <Cell key={l.store_id} fill={l.value_gbp > data.threshold_gbp ? RED : AMBER} />
               ))}
@@ -370,6 +371,7 @@ function ExposureCard({ data, filters, onAllLocations }: { data: ExecutiveSummar
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        </div>
       ) : (
         <CardEmpty art={<EmptyChartArt />} title="No revenue at risk here">
           <span>No store has open cases{scopeText(filters, data)} in this period, so there is nothing to rank.</span>

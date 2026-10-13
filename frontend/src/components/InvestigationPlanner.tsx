@@ -155,7 +155,7 @@ export function InvestigationPlanner({ runId, simple = false }: { runId: string;
               <h3>{simple ? "Work these first" : `The work list (top ${plan.top_rows.length})`}</h3>
               {simple ? <span className="small muted">click a row for its stock story</span> : null}
             </div>
-            <div className="table-wrap" style={{ maxHeight: 460 }}>
+            <div className="table-wrap fill">
               <table className="data">
                 <thead>
                   <tr>

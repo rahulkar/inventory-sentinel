@@ -206,7 +206,7 @@ export function AlertQueue({ runId, datasetHasTruth, simple = false }: { runId: 
           </EmptyState>
         ) : (
           <>
-            <div className="table-wrap" style={{ maxHeight: 560 }}>
+            <div className="table-wrap fill">
               <table className="data">
                 <thead>
                   <tr>

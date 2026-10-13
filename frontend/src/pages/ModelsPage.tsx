@@ -47,7 +47,7 @@ export function ModelsPage() {
         </div>
       </div>
       <div className="card">
-        <div className="table-wrap" style={{ maxHeight: 380 }}>
+        <div className="table-wrap fill">
           <table className="data">
             <thead>
               <tr>

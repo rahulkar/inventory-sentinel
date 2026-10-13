@@ -353,7 +353,7 @@ function History({ schedule }: { schedule: Schedule }) {
       ) : runs.length === 0 ? (
         <div className="muted small">No runs yet. Press “Run now” to try it.</div>
       ) : (
-        <div className="table-wrap" style={{ maxHeight: 460 }}>
+        <div className="table-wrap fill">
           <table className="data">
             <thead>
               <tr>
