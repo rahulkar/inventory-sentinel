@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.schemas import Alert, AlertPage, DetectionRun, DetectionRunSummary, DetectRequest, ExecutiveSummary, Job, SeriesMatch, SeriesResponse
-from app.services import detection, executive, storage
+from app.services import detection, executive, reclassify, storage
 
 router = APIRouter(prefix="/api", tags=["detection"])
 
@@ -54,6 +54,19 @@ def dashboard(run_id: str) -> dict:
 def executive_summary(run_id: str, days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None) -> ExecutiveSummary:
     _load(run_id)
     return executive.summary(run_id, days=max(0, days), region=region or None, store_id=store_id or None, category=category or None)
+
+
+@router.post("/runs/{run_id}/reclassify")
+async def reclassify_unclear(run_id: str, days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None, redo: bool = False) -> dict:
+    """AI assist: suggest a cause for the open unclear cases in this view (highest revenue at risk first)."""
+    _load(run_id)
+    keys = executive.open_keys(run_id, days=max(0, days), region=region or None, store_id=store_id or None, category=category or None)
+    try:
+        return await reclassify.run(run_id, keys, redo=redo)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.get("/runs/{run_id}/alerts", response_model=AlertPage)

@@ -755,11 +755,14 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .exov-legend i.round { border-radius: 50%; }
 .exov-bars { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
-.exov-bars li { display: grid; grid-template-columns: minmax(96px, 9.5em) minmax(0, 1fr) 2.6em; align-items: center; gap: 10px; font-size: 13px; }
+.exov-bars li { display: grid; grid-template-columns: minmax(96px, 11em) minmax(0, 1fr) 6.2em; align-items: center; gap: 10px; font-size: 13px; }
 .exov-bars-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .exov-bars-track { height: 14px; }
 .exov-bars-track > span { display: block; height: 100%; min-width: 3px; background: #1a9fe0; border-radius: 0 3px 3px 0; }
-.exov-bars b { font-variant-numeric: tabular-nums; text-align: right; }
+.exov-bars b { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.exov-bars b small { margin-left: 6px; font-weight: 400; color: var(--text-2); }
+.exov-ai-tag { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: #efe9fb; color: #5b3fb0; font-size: 11px; font-weight: 600; }
+.exov-ai-note { margin: 4px 0 2px; font-size: 12px; color: var(--text-2); }
 .exov-caveat { display: flex; gap: 8px; align-items: flex-start; margin-top: auto; padding: 9px 11px; background: #eef8fd; border-radius: 4px; font-size: 12px; color: var(--text-2); line-height: 1.4; }
 .exov-bars + .exov-caveat { margin-top: 14px; }
 .exov-caveat > svg { flex: 0 0 auto; margin-top: 1px; color: #0b78ad; }

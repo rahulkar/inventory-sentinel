@@ -593,7 +593,9 @@ class ExecutiveSummary(BaseModel):
     sla_target_pct: float
     sla_days: int
     overdue_cases: int
-    patterns: list[dict[str, Any]]  # [{type, cases, revenue_gbp}] open cases by likely type, most first
+    patterns: list[dict[str, Any]]  # [{type, cases, revenue_gbp, ai_cases}] open cases by likely type (AI suggestion for unclear ones), most revenue first
+    unclear_unreviewed: int = 0  # open unclear cases the AI assist has not looked at yet
+    ai_available: bool = False  # an LLM gateway is configured, so the AI assist can run
     top_categories: list[dict[str, Any]]  # [{category, cases, revenue_gbp}] open cases by product category, top 5
     top_locations: list[dict[str, Any]]
 

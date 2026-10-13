@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Download, Info, MapPin, Play, ShieldCheck, Tag, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Calendar, ChartColumnIncreasing, Check, ChevronRight, Download, Info, MapPin, Play, ShieldCheck, Sparkles, Tag, TriangleAlert, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { useApp } from "../context";
@@ -73,6 +73,7 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
   const [data, setData] = useState<ExecutiveSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     try {
@@ -82,11 +83,9 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
     }
     if (!runId) return;
     let stop = false;
-    const kind = filters.location.slice(0, 2);
-    const loc = filters.location.slice(2);
     setLoading(true);
     api.runs
-      .executive(runId, { days: filters.days, region: kind === "r:" ? loc : null, store_id: kind === "s:" ? loc : null, category: filters.category || null })
+      .executive(runId, execFilters(filters))
       .then((d) => {
         if (stop) return;
         setData(d);
@@ -97,7 +96,7 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
     return () => {
       stop = true;
     };
-  }, [runId, filters]);
+  }, [runId, filters, reload]);
 
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
   const source = ds?.kind === "connector" ? String(ds.params?.connector_name ?? "Vendor data") : ds?.kind === "synthetic" ? "Synthetic demo data" : "Uploaded data";
@@ -203,7 +202,7 @@ function ExecAnswer({ onRerun }: { onRerun?: (connectorId: string) => void }) {
           </div>
 
           <div className="exov-row2">
-            <PatternsCard data={data} filters={filters} onClear={() => set({ location: "", category: "" })} />
+            <PatternsCard runId={runId} data={data} filters={filters} onClear={() => set({ location: "", category: "" })} onChanged={() => setReload((n) => n + 1)} />
             <ExposureCard data={data} filters={filters} onAllLocations={() => set({ location: "" })} />
           </div>
 
@@ -265,9 +264,35 @@ function CardEmpty({ art, title, children }: { art: ReactNode; title: string; ch
   );
 }
 
-/** Open cases by the model's likely cause: what kind of problem the board is looking at. */
-function PatternsCard({ data, filters, onClear }: { data: ExecutiveSummary; filters: Filters; onClear: () => void }) {
-  const max = Math.max(1, ...data.patterns.map((p) => p.cases));
+const execFilters = (f: Filters) => {
+  const kind = f.location.slice(0, 2);
+  const loc = f.location.slice(2);
+  return { days: f.days, region: kind === "r:" ? loc : null, store_id: kind === "s:" ? loc : null, category: f.category || null };
+};
+
+/** Open cases by likely cause, most revenue at risk first; unclear cases can be sent to the AI assist for a suggested cause. */
+function PatternsCard({ runId, data, filters, onClear, onChanged }: { runId: string | null; data: ExecutiveSummary; filters: Filters; onClear: () => void; onChanged: () => void }) {
+  const max = Math.max(1, ...data.patterns.map((p) => p.revenue_gbp));
+  const aiTotal = data.patterns.reduce((n, p) => n + p.ai_cases, 0);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const reclassify = () => {
+    if (!runId) return;
+    setBusy(true);
+    setNote(null);
+    api.runs
+      .reclassify(runId, execFilters(filters))
+      .then((r) => {
+        setNote(
+          `AI reviewed ${num.format(r.requested)} case${r.requested === 1 ? "" : "s"}: ${num.format(r.reclassified)} given a likely cause, ${num.format(r.still_unclear)} still unclear` +
+            (r.failed ? `, ${num.format(r.failed)} not answered` : "") +
+            ".",
+        );
+        onChanged();
+      })
+      .catch((e) => setNote(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
   const narrowed = Boolean(filters.location || filters.category);
   const period = PERIODS.find((p) => p.days === filters.days)?.label.toLowerCase() ?? "this period";
   return (
@@ -277,27 +302,43 @@ function PatternsCard({ data, filters, onClear }: { data: ExecutiveSummary; filt
           <h2>Unusual patterns</h2>
           <p>
             {num.format(data.open_cases)} open case{data.open_cases === 1 ? "" : "s"}
-            {scopeText(filters, data)} · likely cause
+            {scopeText(filters, data)} · likely cause, ranked by revenue at risk
           </p>
         </div>
+        {data.unclear_unreviewed > 0 && data.ai_available ? (
+          <button className="btn sm" onClick={reclassify} disabled={busy || !runId} title="Ask the AI to suggest a cause for unclear cases, highest revenue at risk first (up to 200 at a time)">
+            {busy ? <Spinner /> : <Sparkles size={14} />} Reclassify {num.format(data.unclear_unreviewed)} unclear with AI
+          </button>
+        ) : null}
       </div>
+      {note ? <p className="exov-ai-note">{note}</p> : null}
+      {data.unclear_unreviewed > 0 && !data.ai_available ? <p className="exov-ai-note">Set up the AI gateway in Settings to reclassify unclear cases.</p> : null}
       {data.patterns.length ? (
         <>
           <ul className="exov-bars" aria-label="Open cases by likely cause">
             {data.patterns.map((p) => (
-              <li key={p.type} title={`${TYPE_HELP[p.type] ?? ""} ${money(p.revenue_gbp)} revenue at risk.`.trim()}>
-                <span className="exov-bars-label">{TYPE_LABEL[p.type] ?? cap(p.type)}</span>
-                <span className="exov-bars-track" aria-hidden="true">
-                  <span style={{ width: `${(p.cases / max) * 100}%` }} />
+              <li
+                key={p.type}
+                title={`${TYPE_HELP[p.type] ?? ""} ${num.format(p.cases)} case${p.cases === 1 ? "" : "s"}, ${money(p.revenue_gbp)} revenue at risk.${p.ai_cases ? ` ${num.format(p.ai_cases)} suggested by AI.` : ""}`.trim()}
+              >
+                <span className="exov-bars-label">
+                  {TYPE_LABEL[p.type] ?? cap(p.type)}
+                  {p.ai_cases ? <span className="exov-ai-tag">+{num.format(p.ai_cases)} AI</span> : null}
                 </span>
-                <b>{num.format(p.cases)}</b>
+                <span className="exov-bars-track" aria-hidden="true">
+                  <span style={{ width: `${(p.revenue_gbp / max) * 100}%` }} />
+                </span>
+                <b>
+                  {compactGbp(p.revenue_gbp)}
+                  <small>{num.format(p.cases)}</small>
+                </b>
               </li>
             ))}
           </ul>
           <div className="exov-caveat">
             <IconInfo />
             <span>
-              <b>Suspected causes, verification required.</b> These are the model's provisional triage labels; they do not prove theft or error until a case is investigated.
+              <b>Suspected causes, verification required.</b> These are the model's provisional triage labels{aiTotal ? ", including AI suggestions for cases the rules could not type" : ""}; they do not prove theft or error until a case is investigated.
             </span>
           </div>
         </>

@@ -9,7 +9,8 @@ import pandas as pd
 
 from app import config
 from app.schemas import ExecutiveSummary
-from app.services import storage, triage
+from app.assistant import settings as llm_settings
+from app.services import reclassify, storage, triage
 
 _cache: dict[tuple, ExecutiveSummary] = {}
 
@@ -18,20 +19,27 @@ def summary(run_id: str, days: int = 90, region: str | None = None, store_id: st
     rd = storage.load_run(run_id)
     ds = storage.load_dataset(rd.run.dataset_id)
     reviews = triage.latest(ds.meta.id)
-    key = (run_id, days, region, store_id, category, len(reviews), max((r["decided_at"] for r in reviews.values()), default=""))
+    key = (run_id, days, region, store_id, category, len(reviews), max((r["decided_at"] for r in reviews.values()), default=""), reclassify.version(run_id))
     if key not in _cache:
         if len(_cache) > 64:
             _cache.clear()
         _cache[key] = _build(rd, ds, reviews, days, region, store_id, category)
-    return _cache[key]
+    return _cache[key].model_copy(update={"ai_available": llm_settings.load().configured})
 
 
-def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str, Any]], days: int, region: str | None, store_id: str | None, category: str | None) -> ExecutiveSummary:
+def open_keys(run_id: str, days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None) -> list[str]:
+    """Alert keys of the open cases the summary counts for these filters."""
+    rd = storage.load_run(run_id)
+    ds = storage.load_dataset(rd.run.dataset_id)
+    reviews = triage.latest(ds.meta.id)
+    a = _scope(rd, ds, days, region, store_id, category)[0]
+    return [k for k in a["alert_key"] if k not in reviews] if len(a) else []
+
+
+def _scope(rd: storage.RunData, ds: storage.Dataset, days: int, region: str | None, store_id: str | None, category: str | None) -> tuple[pd.DataFrame, date, date, date]:
+    """Alerts that started in the period, in the chosen place, plus (first data day, period start, period end)."""
     first, end = date.fromisoformat(str(ds.dates[0])), date.fromisoformat(str(ds.dates[-1]))
     start = max(first, end - timedelta(days=days - 1)) if days > 0 else first
-    n_days = (end - start).days + 1
-
-    # alerts that started in the period, in the chosen place
     inc = rd.incidents
     if len(inc):
         sd = pd.to_datetime(inc["start_date"]).dt.date
@@ -42,13 +50,22 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
             m &= (inc["store_id"] == store_id).to_numpy()
         if category:
             m &= (inc["category"] == category).to_numpy()
-        a = inc[m].copy()
-    else:
-        a = inc.copy()
+        return inc[m].copy(), first, start, end
+    return inc.copy(), first, start, end
+
+
+def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str, Any]], days: int, region: str | None, store_id: str | None, category: str | None) -> ExecutiveSummary:
+    a, first, start, end = _scope(rd, ds, days, region, store_id, category)
+    n_days = (end - start).days + 1
     price_col = "unit_price" if "unit_price" in ds.skus else "unit_cost"
     price = dict(zip(ds.skus["sku_id"], ds.skus[price_col].astype(float)))
     a["revenue"] = a["units_at_risk"].astype(float) * a["sku_id"].map(price).fillna(0.0) if len(a) else 0.0
     a["outcome"] = a["alert_key"].map(lambda k: reviews[k]["outcome"] if k in reviews else "open") if len(a) else "open"
+    # unclear cases count under the AI's suggested cause when it was confident enough
+    if len(a):
+        a["type"], a["ai_typed"] = reclassify.effective_types(rd.run.run_id, a)
+    else:
+        a["type"], a["ai_typed"] = "", False
     is_open = (a["outcome"] == "open").to_numpy() if len(a) else np.zeros(0, dtype=bool)
     op, closed = a[is_open], a[~is_open]
 
@@ -68,8 +85,9 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
         if p_end >= first and (p_end - p_start).days + 1 >= 7:
             prev = _accuracy(ds, p_start, p_end, region, store_id, category)
 
-    # unusual patterns: open cases by the model's provisional cause, most cases first
-    pat = op.groupby("likely_type").agg(cases=("alert_key", "size"), revenue=("revenue", "sum")).sort_values(["cases", "revenue"], ascending=False) if len(op) else pd.DataFrame(columns=["cases", "revenue"])
+    # unusual patterns: open cases by provisional cause, most revenue at risk first
+    pat = op.groupby("type").agg(cases=("alert_key", "size"), revenue=("revenue", "sum"), ai_cases=("ai_typed", "sum")).sort_values(["revenue", "cases"], ascending=False) if len(op) else pd.DataFrame(columns=["cases", "revenue", "ai_cases"])
+    unclear_left = int(((op["type"] == "unclear") & ~op["alert_key"].isin(reclassify.load(rd.run.run_id))).sum()) if len(op) else 0
 
     # top categories: open cases by product category, most cases first
     cats = op.groupby("category").agg(cases=("alert_key", "size"), revenue=("revenue", "sum")).sort_values(["cases", "revenue"], ascending=False).head(5) if len(op) else pd.DataFrame(columns=["cases", "revenue"])
@@ -95,7 +113,8 @@ def _build(rd: storage.RunData, ds: storage.Dataset, reviews: dict[str, dict[str
         sla_target_pct=config.EXEC_SLA_TARGET_PCT,
         sla_days=sla,
         overdue_cases=overdue,
-        patterns=[{"type": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2)} for k, r in pat.iterrows()],
+        patterns=[{"type": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2), "ai_cases": int(r.ai_cases)} for k, r in pat.iterrows()],
+        unclear_unreviewed=unclear_left,
         top_categories=[{"category": str(k), "cases": int(r.cases), "revenue_gbp": round(float(r.revenue), 2)} for k, r in cats.iterrows()],
         top_locations=[{"store_id": k[0], "label": k[1], "value_gbp": round(float(v), 2)} for k, v in top.items()],
     )
