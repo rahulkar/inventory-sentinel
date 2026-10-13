@@ -728,7 +728,7 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-body { display: flex; flex-direction: column; gap: 14px; transition: opacity 0.15s; }
 .exov-body.is-loading { opacity: 0.6; }
 .exov .card { border-radius: 4px; box-shadow: none; }
-.exov-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.exov-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .exov-kpi { display: flex; align-items: center; gap: 18px; padding: 14px 20px; }
 .exov-kpi-icon { flex: 0 0 auto; display: grid; place-items: center; width: 46px; }
 .exov-kpi-label { font-size: 14px; color: var(--text); }
@@ -737,7 +737,7 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-up { color: var(--good); }
 .exov-down { color: #b42318; }
 
-.exov-row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 14px; align-items: stretch; }
+.exov-row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 14px; align-items: stretch; }
 .exov-row2 > .exov-card { display: flex; flex-direction: column; }
 .exov-card { padding: 14px 16px 10px; }
 .exov-card h2 { margin: 0; font-size: 18px; font-weight: 700; }
@@ -762,29 +762,12 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-empty > div:last-child { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); max-width: 320px; }
 .exov-empty b { color: var(--text); font-size: 14px; }
 
-.exov-res { display: flex; flex-direction: column; gap: 10px; }
-.exov-res .exov-card-head { margin-bottom: 0; }
-.exov-topn { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-.exov-topn button { font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; border: none; background: var(--surface); color: var(--text-2); cursor: pointer; }
-.exov-topn button + button { border-left: 1px solid var(--border); }
-.exov-topn button.on { background: #1a9fe0; color: #fff; }
-.exov-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.exov-cats li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
-.exov-cats-rank { flex: 0 0 22px; height: 22px; border-radius: 50%; background: #eef8fd; color: #0b78ad; font-weight: 700; font-size: 12px; display: grid; place-items: center; }
-.exov-cats-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.exov-cats-line { display: flex; justify-content: space-between; gap: 8px; }
-.exov-cats-line b { font-variant-numeric: tabular-nums; }
-.exov-cats .exov-bars-track { height: 8px; }
-.exov-cats-sub { font-size: 12px; color: var(--text-2); }
-.exov-outline { margin-top: auto; align-self: center; width: min(100%, 260px); font: inherit; font-size: 14px; font-weight: 600; color: #0b78ad; background: var(--surface); border: 1.5px solid #1a9fe0; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
-.exov-outline:hover { background: #eef8fd; }
 .exov-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); border-bottom: 4px solid #1a9fe0; padding-bottom: 10px; }
 .exov-foot > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 @media (max-width: 1199px) {
   .exov-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .exov-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .exov-row2 > .exov-res { grid-column: 1 / -1; }
 }
 @media (max-width: 991px) {
   .exov-row2 { grid-template-columns: 1fr; }
@@ -801,9 +784,8 @@ table.data tr.best td { background: #f0f7ff; }
   .topbar, .chat-fab, .chat-panel, .toasts, .exov-filters, .exov-foot .btn { display: none !important; }
   body { background: #fff; }
   .page { max-width: none; padding: 0; }
-  .exov-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .exov-row2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.85fr); }
-  .exov-row2 > .exov-res { grid-column: auto; }
+  .exov-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .exov-row2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
   .exov .card { break-inside: avoid; }
 }
 
