@@ -4,11 +4,14 @@
 
 Scripted brain: it does not understand language, it pattern-matches the last user message to decide
 whether to call a tool, and when it sees a tool result it answers with a sentence quoting one field.
-Supports streaming (SSE chunks) and non-streaming responses, `GET /v1/models`, and Bearer auth.
+Supports streaming (SSE chunks) and non-streaming responses, `GET /v1/models`, `POST /v1/embeddings` (hashed
+bag-of-words vectors from model "fake-embed", so passages sharing words are close) and Bearer auth.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import re
 import sys
 import threading
@@ -32,7 +35,32 @@ def _auth(authorization: str | None) -> None:
 @app.get("/v1/models")
 def models(authorization: str | None = Header(None)) -> dict[str, Any]:
     _auth(authorization)
-    return {"object": "list", "data": [{"id": MODEL, "object": "model"}, {"id": "fake-plain-model", "object": "model"}]}
+    return {"object": "list", "data": [{"id": MODEL, "object": "model"}, {"id": "fake-plain-model", "object": "model"}, {"id": EMBED_MODEL, "object": "model"}]}
+
+
+EMBED_MODEL = "fake-embed"
+EMBED_DIM = 256
+_SYNONYMS = {"missing": "shrink", "stolen": "theft", "steal": "theft", "shoplifting": "theft", "count": "stocktake", "counting": "stocktake"}
+
+
+def _vector(text: str) -> list[float]:
+    v = [0.0] * EMBED_DIM
+    for w in re.findall(r"[a-z]+", text.lower()):
+        w = _SYNONYMS.get(w, w)
+        h = int(hashlib.md5(w.encode()).hexdigest(), 16)
+        v[h % EMBED_DIM] += 1.0 if (h >> 9) & 1 else -1.0
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / n for x in v]
+
+
+@app.post("/v1/embeddings")
+async def embeddings(request: Request, authorization: str | None = Header(None)) -> dict[str, Any]:
+    _auth(authorization)
+    body = await request.json()
+    if body.get("model") != EMBED_MODEL:
+        raise HTTPException(400, {"error": {"message": f"{body.get('model')} is not an embedding model"}})
+    texts = body["input"] if isinstance(body["input"], list) else [body["input"]]
+    return {"object": "list", "model": EMBED_MODEL, "data": [{"object": "embedding", "index": i, "embedding": _vector(t)} for i, t in enumerate(texts)], "usage": {"prompt_tokens": 0, "total_tokens": 0}}
 
 
 def _last(messages: list[dict[str, Any]], role: str) -> dict[str, Any] | None:

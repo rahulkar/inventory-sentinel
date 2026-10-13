@@ -175,7 +175,7 @@ def tool_label(name: str, args: dict[str, Any]) -> str:
         "triage_summary": "Reading team feedback",
         "propose_job": f"Proposing a {a.get('kind', '')} job",
         "job_status": "Checking jobs",
-        "search_docs": f"Searching the guide for '{a.get('query', '')}'",
+        "search_docs": f"Searching the documents for '{a.get('query', '')}'",
         "explain_metric": f"Looking up '{a.get('term', '')}'",
         "app_state": "Reading what is loaded",
         "usage_summary": "Reading the team's usage and cost",

@@ -21,6 +21,7 @@ class LlmSettings(BaseModel):
     timeout_s: int = Field(config.ASSISTANT_TIMEOUT_S, ge=10, le=600)
     streaming: bool = True
     agent_mode: Literal["team", "single"] = "team"
+    embedding_model: str = ""  # optional: a gateway embedding model for semantic document search; blank = keyword search only
     price_input_per_m: float = Field(0.0, ge=0)  # USD per 1M prompt tokens; 0 = use the gateway's or litellm's price list
     price_output_per_m: float = Field(0.0, ge=0)  # USD per 1M completion tokens; 0 = automatic
     verify_ssl: bool = False  # off by default: lab gateways usually carry self-signed certificates; switch on (with a CA bundle) for production
@@ -42,6 +43,7 @@ class LlmSettingsOut(BaseModel):
     timeout_s: int
     streaming: bool
     agent_mode: str
+    embedding_model: str
     price_input_per_m: float
     price_output_per_m: float
     verify_ssl: bool
@@ -176,6 +178,7 @@ def to_out(s: LlmSettings) -> LlmSettingsOut:
         timeout_s=s.timeout_s,
         streaming=s.streaming,
         agent_mode=s.agent_mode,
+        embedding_model=s.embedding_model,
         price_input_per_m=s.price_input_per_m,
         price_output_per_m=s.price_output_per_m,
         verify_ssl=s.verify_ssl,

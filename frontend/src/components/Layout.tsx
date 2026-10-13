@@ -17,7 +17,10 @@ const EXEC: { key: Page; label: string }[] = [
   { key: "alerts", label: "Alerts" },
   { key: "plan", label: "Plan" },
 ];
-const OPERATIONS: { key: Page; label: string }[] = [{ key: "schedules", label: "Schedules" }];
+const OPERATIONS: { key: Page; label: string }[] = [
+  { key: "schedules", label: "Schedules" },
+  { key: "documents", label: "Documents" },
+];
 const ANALYST: { key: Page; label: string }[] = [
   { key: "models", label: "Models" },
   { key: "experiments", label: "Experiments" },

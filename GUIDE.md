@@ -267,6 +267,24 @@ claude mcp add --transport http inventory-sentinel http://127.0.0.1:8000/mcp/
 
 Jobs proposed over MCP still appear as cards in the app's chat for you to confirm.
 
+### Documents the assistant reads
+
+**Documents** (Operations) is the assistant's library. It already reads this guide, the README, the leadership story,
+the glossary and every SOP; add your own files to it:
+
+- **Reference documents** (PDF, Word .docx, Markdown, text): policies, procedures, contracts, escalation guides, SOPs
+  written as PDFs. They are split into passages by heading (PDFs by page) and the assistant's document search quotes
+  them by name and section. A scanned PDF has no text layer and needs OCR first.
+- **SOPs** (Markdown with the SOP front matter described in `docs/sops/README.md`): these become live SOPs. The alert
+  drill-down uses them as checklists, and an uploaded SOP replaces the built-in one with the same id. *Detect* picks the
+  type from the file; choose *SOP* to have a malformed SOP rejected rather than filed as a reference.
+
+Search is **keyword** (BM25) out of the box: exact on SOP ids, store numbers and codes. Set an **embedding model** in
+Settings (any embedding model your LiteLLM gateway serves) and passages are also matched **by meaning**, so "stolen
+goods" finds a passage about theft; the two rankings are merged. Vectors are computed once per passage and model and
+cached in `data/knowledge.sqlite`; if the gateway is unreachable, search quietly stays keyword-only. **Test what the
+assistant finds** shows the passages the assistant would get for a question.
+
 ## 9. Demo scripts
 
 **Three-minute CIO/CTO demo (Executive mode, the default):**

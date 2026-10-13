@@ -18,6 +18,7 @@ export function SettingsPage() {
   const [timeoutS, setTimeoutS] = useState(120);
   const [streaming, setStreaming] = useState(true);
   const [agentMode, setAgentMode] = useState<"team" | "single">("team");
+  const [embeddingModel, setEmbeddingModel] = useState("");
   const [priceIn, setPriceIn] = useState(0);
   const [priceOut, setPriceOut] = useState(0);
   const [verifySsl, setVerifySsl] = useState(false);
@@ -36,6 +37,7 @@ export function SettingsPage() {
         setTimeoutS(s.timeout_s);
         setStreaming(s.streaming);
         setAgentMode(s.agent_mode);
+        setEmbeddingModel(s.embedding_model ?? "");
         setPriceIn(s.price_input_per_m);
         setPriceOut(s.price_output_per_m);
         setVerifySsl(s.verify_ssl);
@@ -80,7 +82,7 @@ export function SettingsPage() {
   const save = async () => {
     setBusy("save");
     try {
-      const s = await api.settings.llm.put({ base_url: baseUrl, api_key: apiKey, model, temperature, timeout_s: timeoutS, streaming, agent_mode: agentMode, price_input_per_m: priceIn, price_output_per_m: priceOut, verify_ssl: verifySsl, ca_bundle: caBundle });
+      const s = await api.settings.llm.put({ base_url: baseUrl, api_key: apiKey, model, temperature, timeout_s: timeoutS, streaming, agent_mode: agentMode, embedding_model: embeddingModel, price_input_per_m: priceIn, price_output_per_m: priceOut, verify_ssl: verifySsl, ca_bundle: caBundle });
       setSaved(s);
       setApiKey("");
       await refreshStatus();
@@ -179,6 +181,17 @@ export function SettingsPage() {
               </label>
               <label className="field">
                 <span>
+                  Embedding model (optional) <Help text="Used to search documents by meaning (Documents page). Pick an embedding model your gateway serves, e.g. text-embedding-3-small or gemini-embedding-001. Blank = keyword search only." />
+                </span>
+                <input type="text" list="gateway-models" value={embeddingModel} onChange={(e) => setEmbeddingModel(e.target.value)} placeholder="blank = keyword search only" />
+                <datalist id="gateway-models">
+                  {models.filter((m) => /embed/i.test(m)).concat(models.filter((m) => !/embed/i.test(m))).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="field">
+                <span>
                   Price per 1M input tokens (USD) <Help text="Leave 0 to use the price the gateway reports (LiteLLM /model/info) or litellm's bundled price list. Set both to override." />
                 </span>
                 <input type="number" min={0} step={0.01} value={priceIn} onChange={(e) => setPriceIn(Number(e.target.value))} />
@@ -236,7 +249,7 @@ export function SettingsPage() {
             </div>
             <ul className="muted small" style={{ paddingLeft: 18, margin: 0 }}>
               <li>Every message goes to a front-door agent that answers directly or hands over to a specialist: data analyst, model analyst, alert investigator, loss-prevention planner or explainer.</li>
-              <li>Agents read live app data through tools (datasets, models, detection runs, alerts, drill-downs, the investigation planner, triage feedback, the user guide) and see the page, tab, alert and item you have open.</li>
+              <li>Agents read live app data through tools (datasets, models, detection runs, alerts, drill-downs, the investigation planner, triage feedback, the user guide, SOPs and the documents on the Documents page) and see the page, tab, alert and item you have open.</li>
               <li>Anything that creates or changes something becomes a proposal card you confirm before it runs.</li>
               <li>All model calls go through the gateway above; nothing else is contacted.</li>
             </ul>

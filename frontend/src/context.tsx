@@ -3,7 +3,7 @@ import { api, ApiError } from "./api";
 import type { AppConfig, Connector, DatasetMeta, DetectionRunSummary, Job, ModelMeta, ModelSpec, ModelSummary } from "./types";
 import { defaultConfig, isTerminal } from "./utils";
 
-export type Page = "overview" | "story" | "data" | "train" | "act" | "schedules" | "models" | "experiments" | "assistant" | "settings" | "alerts" | "plan";
+export type Page = "overview" | "story" | "data" | "train" | "act" | "schedules" | "documents" | "models" | "experiments" | "assistant" | "settings" | "alerts" | "plan";
 export type Area = "business" | "analyst";
 /** exec = lean CIO/CTO view (Overview, Alerts, Plan, Story); analyst = every page and tab. */
 export type Mode = "exec" | "analyst";

@@ -490,7 +490,9 @@ def job_status(job_id: str | None = None) -> dict[str, Any]:
 
 
 def search_docs(query: str, k: int = 4) -> dict[str, Any]:
-    """Search the app's documentation (user guide, README, the leadership story, glossary) for how-to and why questions.
+    """Search the knowledge library: the user guide, README, leadership story, glossary, every SOP, and the documents the
+    team uploaded on the Documents page (policies, procedures, contracts, SOP PDFs). Use it for how-to, why and policy
+    questions, and quote the document name (source) and section you rely on.
 
     Args:
         query: Free-text question or keywords.

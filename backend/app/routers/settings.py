@@ -31,8 +31,14 @@ def put_llm(body: dict[str, Any] = Body(...)) -> LlmSettingsOut:
         merged = llm.merge_put(llm.load(), body)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    if isinstance(body.get("embedding_model"), str):
+        merged.embedding_model = body["embedding_model"].strip()
     saved = llm.save(merged)
     _invalidate_engine()
+    if saved.embedding_model:
+        from app.services import documents
+
+        documents.start_embedding()  # a new (or first) embedding model: embed the library in the background now
     return llm.to_out(saved)
 
 

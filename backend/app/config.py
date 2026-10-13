@@ -14,6 +14,14 @@ EXPORTS_DIR = DATA_DIR / "exports"
 REGISTRY_PATH = DATA_DIR / "registry.json"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 SOPS_DIR = ROOT / "docs" / "sops"
+USER_SOPS_DIR = DATA_DIR / "sops"  # SOPs uploaded in the app; same schema, and they win over a built-in SOP with the same id
+DOCS_DIR = DATA_DIR / "docs"  # uploaded reference documents (originals), indexed for the assistant
+KNOWLEDGE_DB = DATA_DIR / "knowledge.sqlite"  # documents, chunks and the embedding cache
+DOC_MAX_MB = 25
+DOC_TYPES = (".pdf", ".docx", ".md", ".markdown", ".txt")
+EMBED_BATCH = 16  # inputs per embeddings request: the smallest limit seen on hosted models (some MaaS deployments cap at 16)
+EMBED_TIMEOUT_S = 20  # per batch while indexing; the query embedding gets a shorter budget so chat never waits long
+EMBED_QUERY_TIMEOUT_S = 6
 
 # ---- vendor connectors (MCP), syncs, schedules, vendor tasks
 CONNECTORS_PATH = DATA_DIR / "connectors.json"
@@ -131,5 +139,5 @@ LP_FLAG_TYPES = ["theft", "counting_error", "process_issue", "data_error"]
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, DATASETS_DIR, MODELS_DIR, RUNS_DIR, TRIAGE_DIR, EXPORTS_DIR, CONNECTORS_DIR):
+    for d in (DATA_DIR, DATASETS_DIR, MODELS_DIR, RUNS_DIR, TRIAGE_DIR, EXPORTS_DIR, CONNECTORS_DIR, DOCS_DIR, USER_SOPS_DIR):
         d.mkdir(parents=True, exist_ok=True)

@@ -788,3 +788,25 @@ table.data tr.best td { background: #f0f7ff; }
   .exov-row3 { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
   .exov .card { break-inside: avoid; }
 }
+
+/* ---------------------------------------------------------------- documents library */
+.dropzone:has(svg) { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--border-control); border-radius: 8px; padding: 2px; background: var(--surface-2); align-self: flex-start; }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2); background: transparent; border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.seg button.on { background: var(--surface); color: var(--primary); box-shadow: 0 1px 2px rgba(18,24,38,0.12); }
+.seg button:focus-visible { outline: 2px solid var(--primary-2); outline-offset: 1px; }
+table.data td.doc-cell { white-space: normal; min-width: 220px; }
+.doc-name { display: flex; align-items: flex-start; gap: 8px; }
+.doc-name > svg { margin-top: 1px; color: var(--text-3); }
+.builtin-docs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.builtin-docs .chip { background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+.search-row { display: flex; gap: 8px; }
+.search-row input { flex: 1; }
+.doc-hits { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.doc-hits li { border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; background: var(--surface-2); }
+.doc-hits p { margin: 4px 0 0; color: var(--text-2); overflow-wrap: anywhere; }
+.doc-hit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.doc-hit-head .chip { margin-left: auto; }
+.chip.match-keyword { background: var(--surface); color: var(--text-2); border-color: var(--border-strong); }
+.chip.match-meaning { background: #f1ebfb; color: #5b2ea6; }
+.chip.match-both { background: var(--primary-soft); color: var(--primary); }

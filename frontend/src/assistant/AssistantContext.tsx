@@ -43,6 +43,7 @@ const QUICK: Record<string, string[]> = {
   exec_alerts: ["Why was the top alert flagged?", "Which stores need a visit this week?", "Is this theft or a counting mistake?"],
   exec_plan: ["What do 120 investigator hours buy us?", "Is it worth adding more investigators?", "What would it take to run this on our real data?"],
   exec_story: ["What is the business case?", "How does the AI decide, in plain words?", "What would it take to run this on our real data?"],
+  documents: ["What does our returns policy say about refunds without a receipt?", "Which SOP covers till fraud, and who owns it?", "Summarise the documents you can read"],
   settings: ["Who is on your team and what has it cost so far?", "Which model would be cheapest for everyday questions?", "Summarise everything loaded in three lines"],
 };
 

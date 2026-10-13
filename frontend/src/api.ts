@@ -10,6 +10,9 @@ import type {
   DatasetMeta,
   DetectionRun,
   DetectionRunSummary,
+  DocSearchHit,
+  DocumentLibrary,
+  LibraryDocument,
   ExecutiveSummary,
   Experiment,
   AlertSop,
@@ -267,6 +270,15 @@ export const api = {
     summary: (datasetId: string, runId?: string | null) => request<TriageSummary>(`/api/triage/summary${qs({ dataset_id: datasetId, run_id: runId })}`),
     simulate: (runId: string, days = 5, perDay = 25) => request<{ reviewed: number; true_alerts: number; precision: number }>("/api/triage/simulate", json("POST", { run_id: runId, days, per_day: perDay })),
     reset: (datasetId: string) => request<{ removed: number }>(`/api/triage?dataset_id=${datasetId}`, { method: "DELETE" }),
+  },
+
+  documents: {
+    list: () => request<DocumentLibrary>("/api/documents"),
+    upload: (file: File, kind: "auto" | "sop" | "reference", onProgress?: (f: number) => void) => xhrForm<LibraryDocument>("/api/documents", form({ kind }, file), onProgress),
+    delete: (id: string) => request<{ deleted: boolean }>(`/api/documents/${id}`, { method: "DELETE" }),
+    search: (q: string, k = 5) => request<{ hits: DocSearchHit[]; mode: string }>(`/api/documents/search${qs({ q, k })}`),
+    reindex: () => request<{ started: boolean }>("/api/documents/reindex", { method: "POST" }),
+    fileUrl: (id: string) => `/api/documents/${id}/file`,
   },
 
   settings: {

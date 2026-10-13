@@ -45,15 +45,20 @@ def parse(path: Path) -> Sop | None:
     )
 
 
+def signature() -> float:
+    return _signature(config.SOPS_DIR) + _signature(config.USER_SOPS_DIR) * 7.0
+
+
 def load() -> dict[str, Sop]:
+    """Built-in SOPs (docs/sops) then uploaded ones (data/sops): an uploaded SOP replaces a built-in one with the same id."""
     global _cache
-    d = config.SOPS_DIR
-    sig = _signature(d)
+    sig = signature()
     with _lock:
         if _cache and _cache[0] == sig:
             return _cache[1]
         out: dict[str, Sop] = {}
-        for p in sorted(d.glob("*.md")) if d.exists() else []:
+        files = [p for d in (config.SOPS_DIR, config.USER_SOPS_DIR) if d.exists() for p in sorted(d.glob("*.md"))]
+        for p in files:
             if p.name.lower() == "readme.md":
                 continue
             try:

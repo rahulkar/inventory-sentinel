@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from app import config  # noqa: E402
 from app.assistant import proposals  # noqa: E402
-from app.routers import assistant, connectors as connectors_router, datasets, jobs, planner, runs, schedules, settings, sops, training  # noqa: E402
+from app.routers import assistant, connectors as connectors_router, datasets, documents as documents_router, jobs, planner, runs, schedules, settings, sops, training  # noqa: E402
 from app.schemas import AppConfig, Health  # noqa: E402
 from app.services import connectors, envprobe, registry, scheduler, storage  # noqa: E402
 
@@ -130,7 +130,7 @@ async def not_found(_: Request, exc: LookupError) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=404)
 
 
-for r in (datasets.router, connectors_router.router, schedules.router, sops.router, training.router, runs.router, planner.router, jobs.router, settings.router, assistant.router):
+for r in (datasets.router, connectors_router.router, schedules.router, sops.router, documents_router.router, training.router, runs.router, planner.router, jobs.router, settings.router, assistant.router):
     app.include_router(r)
 
 if mcp_app is not None:

@@ -34,7 +34,7 @@ GUARDRAILS = """Rules:
 2. Prefer one well-chosen tool call, then answer. Do not call the same tool twice with the same arguments.
 3. You never run or change anything yourself. Syncing a vendor, training, running detection, retraining with feedback, exporting, switching the model in use, creating, changing or running schedules, and raising tasks in a vendor's system are PROPOSALS: call propose_job, say in one sentence what it will do (and how long it takes), and ask the user to press Confirm. Never say a job has started or a task was raised unless a tool result shows it. Do not re-propose something already pending.
 4. Investigation-planner figures are estimates that depend on the recovery rate and on P(true anomaly); say so briefly when you quote them. You are not a financial adviser.
-5. For "how do I" or "why" questions use search_docs and mention the guide section. For a term, use explain_metric.
+5. For "how do I", "why" or policy questions use search_docs (it also covers documents the team uploaded) and name the document and section you used. For a term, use explain_metric.
 6. Uploading files, adding or editing connectors and their tokens, deleting things, cancelling jobs and recording triage decisions happen in the app's pages, not here; point the user to the page and tab. Never ask for or repeat a connector token.
 7. Detection runs remember which model produced them. When figures come from a run whose model is NOT the model in use (the tool result says so), say which model produced them and offer to run detection with the model in use.
 8. Describe what the data shows as patterns "consistent with" theft, fraud or error. Never accuse a person or a team; the data holds no employee identities.

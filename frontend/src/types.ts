@@ -618,6 +618,7 @@ export interface LlmSettingsOut {
   timeout_s: number;
   streaming: boolean;
   agent_mode: "team" | "single";
+  embedding_model: string;
   price_input_per_m: number;
   price_output_per_m: number;
   verify_ssl: boolean;
@@ -1046,4 +1047,44 @@ export interface ExecutiveSummary {
   store_trend: ExecTrend;
   category_trend: ExecTrend;
   top_locations: { store_id: string; label: string; value_gbp: number }[];
+}
+
+export interface LibraryDocument {
+  id: string;
+  name: string;
+  kind: "sop" | "reference";
+  ext: string;
+  size_bytes: number;
+  n_chunks: number;
+  n_words: number;
+  sop_id: string | null;
+  created_at: string;
+  note: string | null;
+  duplicate?: boolean;
+}
+
+export interface DocumentLibrary {
+  documents: LibraryDocument[];
+  builtin: { name: string; kind: "guide" | "sop"; n_chunks: number }[];
+  index: {
+    passages: number;
+    embedded: number;
+    embedding_model: string | null;
+    mode: "hybrid" | "keyword";
+    running: boolean;
+    done: number;
+    total: number;
+    error: string | null;
+    finished_at: string | null;
+  };
+  limits: { max_mb: number; types: string[] };
+}
+
+export interface DocSearchHit {
+  source: string;
+  section: string;
+  text: string;
+  score: number;
+  match: "keyword" | "meaning" | "both";
+  doc_id?: string;
 }
