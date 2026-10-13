@@ -1,6 +1,7 @@
 """Import real inventory data (CSV) or an exported Inventory Sentinel bundle (ZIP) into the column store."""
 from __future__ import annotations
 
+import gc
 import io
 import json
 import re
@@ -91,6 +92,9 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
     warnings: list[str] = []
     if src is None:
         files = _pick_files(raw_dir)
+        # release the cached memory maps first: Windows cannot delete or overwrite a mapped file
+        storage._dataset_cache.pop(ds_id)
+        gc.collect()
         for sub in ("daily", "features", "truth"):
             storage.safe_rmtree(ds_dir / sub)
     elif is_zip:
@@ -164,9 +168,14 @@ def process(ds_id: str, src: Path | None, is_zip: bool, name: str | None, overri
         warnings.append(f"Dropped {int((~ok).sum()):,} rows with a missing store, SKU or unparseable date.")
     meas = {f: np.concatenate(parts[f])[ok] for f in MEASURES if f in cmap}
     store, sku, day = store[ok], sku[ok], day[ok]
+    if len(day) == 0:
+        raise ValueError("No usable rows: every row is missing a store, a SKU or a date that could be read. Check the date format and the column map.")
     # stable codes in sorted-id order
     st_ids = sorted(store_codes, key=lambda s: (len(s), s))
     sk_ids = sorted(sku_codes, key=lambda s: (len(s), s))
+    code_max = np.iinfo(np.int16).max  # store_code / sku_code / date_idx are stored as int16
+    if len(st_ids) > code_max or len(sk_ids) > code_max or int(day.max() - day.min()) > code_max:
+        raise ValueError(f"Too many distinct values: {len(st_ids):,} stores, {len(sk_ids):,} SKUs, {int(day.max() - day.min()) + 1:,} days (each must be at most {code_max:,}).")
     st_remap = np.empty(len(store_codes), dtype=np.int64)
     st_remap[[store_codes[s] for s in st_ids]] = np.arange(len(st_ids))
     sk_remap = np.empty(len(sku_codes), dtype=np.int64)

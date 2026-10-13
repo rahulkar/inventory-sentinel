@@ -98,6 +98,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  // alert ids are numbered per run (A000001...): a selection must not carry over to another run
+  const [alertRunId, setAlertRunId] = useState<string | null>(null);
+  if (alertRunId !== selectedRunId) {
+    setAlertRunId(selectedRunId);
+    setSelectedAlertId(null);
+  }
   const [drill, setDrill] = useState<{ storeId: string; skuId: string } | null>(null);
   const [actTab, setActTab] = useState<ActTab>("alerts");
   const [jobs, setJobs] = useState<Record<string, Job>>({});
@@ -214,7 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const [cfg, specs, active] = await Promise.all([api.config(), api.models.available(), api.jobs.list(true)]);
         setConfig(cfg);
         setAvailableModels(specs);
-        setJobs(Object.fromEntries(active.map((j) => [j.job_id, j])));
+        setJobs((cur) => ({ ...cur, ...Object.fromEntries(active.map((j) => [j.job_id, j])) }));
         await Promise.all([refreshDatasets(), refreshModels(), refreshRuns()]);
       } catch (e) {
         setBackendOk(false);

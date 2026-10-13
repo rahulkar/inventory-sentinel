@@ -62,7 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
               How it works
             </button>
             <span className="nav-divider" />
-            <div className="nav-group">
+            <div className="nav-group" role="group" aria-label="Business">
               <span className="nav-caption">Business</span>
               {BUSINESS.map((p) => (
                 <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
@@ -72,7 +72,7 @@ export function Layout({ children }: { children: ReactNode }) {
               ))}
             </div>
             <span className="nav-divider" />
-            <div className="nav-group">
+            <div className="nav-group" role="group" aria-label="Analyst">
               <span className="nav-caption">Analyst</span>
               {ANALYST.map((p) => (
                 <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
@@ -96,18 +96,18 @@ export function Layout({ children }: { children: ReactNode }) {
               </button>
             </div>
             {exec ? null : (
-            <button className={`ai-chip ${ai?.configured && ai.available ? "on" : ""} ${page === "settings" ? "active" : ""}`} onClick={() => setPage("settings")} title="AI gateway settings">
+            <button className={`ai-chip ${ai?.configured && ai.available ? "on" : ""} ${page === "settings" ? "active" : ""}`} onClick={() => setPage("settings")} title={`AI gateway settings${ai?.configured && ai.available ? ` (model: ${ai.model})` : ""}`}>
               <span className={`dot ${ai?.configured && ai.available ? "" : "off"}`} />
-              <span className="hide-compact">{ai?.configured && ai.available ? `AI: ${ai.model}` : "AI: not configured"}</span>
+              <span className="hide-compact clip">{ai?.configured && ai.available ? `AI: ${ai.model}` : "AI: not configured"}</span>
               <span className="gear">⚙</span>
             </button>
             )}
             {activeJobs.length || (!exec && recent.length) ? (
-              <button className={`jobs-pill ${lead ? "busy" : ""}`} onClick={() => setJobsOpen((o) => !o)}>
+              <button className={`jobs-pill ${lead ? "busy" : ""}`} onClick={() => setJobsOpen((o) => !o)} title={lead ? lead.title : "Recent jobs"} aria-expanded={jobsOpen}>
                 {lead ? (
                   <>
-                    <span className="spinner" /> {lead.title.length > 28 ? lead.title.slice(0, 28) + "…" : lead.title} · {lead.percent.toFixed(0)}%
-                    {activeJobs.length > 1 ? ` (+${activeJobs.length - 1})` : ""}
+                    <span className="spinner" />
+                    {lead.percent.toFixed(0)}%{activeJobs.length > 1 ? ` (+${activeJobs.length - 1})` : ""}
                   </>
                 ) : (
                   "Recent jobs"
@@ -115,12 +115,12 @@ export function Layout({ children }: { children: ReactNode }) {
               </button>
             ) : null}
             {exec ? null : (
-            <div className="active-model">
+            <div className="active-model" title={activeModel ? `Using ${activeModel.label}` : undefined}>
               <span className={`dot ${backendOk ? "" : "off"}`} />
               {backendOk === false ? (
                 <span>API offline</span>
               ) : activeModel ? (
-                <span>
+                <span className="clip">
                   Using <b>{activeModel.label}</b>
                   {activeModel.metrics.average_precision !== null ? <span className="hide-compact"> · AP {activeModel.metrics.average_precision.toFixed(2)}</span> : null}
                 </span>

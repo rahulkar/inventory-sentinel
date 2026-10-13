@@ -20,15 +20,29 @@ export function SeriesDrilldown({ runId, datasetHasTruth }: { runId: string; dat
       setMatches([]);
       return;
     }
+    let stale = false;
     const t = setTimeout(() => {
-      api.runs.search(runId, q).then(setMatches).catch(() => setMatches([]));
+      api.runs
+        .search(runId, q)
+        .then((m) => !stale && setMatches(m))
+        .catch(() => !stale && setMatches([]));
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
   }, [q, runId]);
   useEffect(() => {
     if (!drill) return;
     setS(null);
-    api.runs.series(runId, drill.storeId, drill.skuId, answerKey).then(setS).catch((e) => toast(errorMessage(e), "error"));
+    let stale = false;
+    api.runs
+      .series(runId, drill.storeId, drill.skuId, answerKey)
+      .then((x) => !stale && setS(x))
+      .catch((e) => !stale && toast(errorMessage(e), "error"));
+    return () => {
+      stale = true;
+    };
   }, [runId, drill, answerKey, tick, toast]);
   const gap = s ? s.points.reduce((a, p) => a + p.variance_units, 0) : 0;
   const flagged = s ? s.points.filter((p) => p.severity > 0).length : 0;

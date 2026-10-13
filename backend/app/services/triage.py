@@ -11,6 +11,7 @@ import pandas as pd
 
 from app import config
 from app.schemas import SimulateTriageRequest, TriageSummary
+from app.services import storage
 
 _lock = threading.Lock()
 TRUTH_TO_OUTCOME = {
@@ -21,7 +22,7 @@ TRUTH_TO_OUTCOME = {
 
 
 def _path(dataset_id: str):
-    return config.TRIAGE_DIR / f"{dataset_id}.jsonl"
+    return config.TRIAGE_DIR / f"{storage.check_id(dataset_id)}.jsonl"
 
 
 def all_records(dataset_id: str) -> list[dict[str, Any]]:

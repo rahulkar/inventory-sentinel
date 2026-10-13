@@ -54,7 +54,7 @@ def _row_series(ds: storage.Dataset, rows: np.ndarray) -> np.ndarray:
 def build_incidents(ds: storage.Dataset, meta, score: np.ndarray, pct: np.ndarray, sev: np.ndarray) -> pd.DataFrame:
     flagged = np.flatnonzero(sev > 0)
     if len(flagged) == 0:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=storage.INCIDENT_COLUMNS)  # keep the header so the saved run loads back
     series = _row_series(ds, flagged)
     day = np.asarray(ds.daily["date_idx"])[flagged].astype(np.int64)
     new = np.r_[True, (series[1:] != series[:-1]) | (day[1:] - day[:-1] > config.INCIDENT_GAP_DAYS + 1)]

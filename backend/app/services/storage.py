@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -71,6 +72,16 @@ def now_iso() -> str:
 
 def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+_ID_RE = re.compile(r"[a-z]+_[0-9a-f]{8}")
+
+
+def check_id(value: str) -> str:
+    """Ids from URLs and query strings become file names: only accept the `new_id` shape (no "..", slashes or drives)."""
+    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
+        raise LookupError(f"Unknown id {value!r}")
+    return value
 
 
 def safe_name(name: str, n: int = 40) -> str:
@@ -154,7 +165,7 @@ def _save_registry() -> None:
 
 # ---------------------------------------------------------------- datasets
 def dataset_dir(ds_id: str) -> Path:
-    return config.DATASETS_DIR / ds_id
+    return config.DATASETS_DIR / check_id(ds_id)
 
 
 def export_path(ds_id: str) -> Path:
@@ -257,8 +268,8 @@ def load_dataset(ds_id: str, with_truth: bool = True) -> Dataset:
     lp = pd.read_csv(base / "lp_flags.csv") if (base / "lp_flags.csv").exists() else pd.DataFrame(columns=["flag_id", "date", "store_id", "sku_id", "date_idx", "store_code", "sku_code", "flag_type", "source", "confirmed", "loss_value_gbp"])
     ds = Dataset(
         meta=meta,
-        stores=pd.read_csv(base / "stores.csv", dtype={"store_id": str}),
-        skus=pd.read_csv(base / "skus.csv", dtype={"sku_id": str}),
+        stores=pd.read_csv(base / "stores.csv", dtype={"store_id": str, "store_name": str, "region": str, "warehouse_team": str}),
+        skus=pd.read_csv(base / "skus.csv", dtype={"sku_id": str, "sku_name": str, "category": str}),
         dates=idx["dates"].astype(str),
         series_offsets=idx["series_offsets"],
         series_store=idx["series_store"],
@@ -304,6 +315,7 @@ def export_status(ds_id: str) -> ExportStatus:
 
 # ---------------------------------------------------------------- models
 def model_paths(model_id: str) -> dict[str, Path]:
+    check_id(model_id)
     return {
         "pipeline": config.MODELS_DIR / f"{model_id}.joblib",
         "meta": config.MODELS_DIR / f"{model_id}.json",
@@ -404,8 +416,16 @@ def delete_model(model_id: str) -> bool:
 
 
 # ---------------------------------------------------------------- detection runs
+INCIDENT_COLUMNS = [
+    "alert_id", "alert_key", "store_code", "sku_code", "store_id", "store_name", "region", "warehouse_team", "sku_id", "sku_name", "category",
+    "start_date", "end_date", "n_days", "n_flagged_days", "peak_row", "peak_score", "peak_percentile", "severity", "units_at_risk",
+    "value_at_risk_gbp", "net_variance_units", "likely_type", "type_confidence", "reasons", "p_true", "truth_type", "start_day",
+]
+_INCIDENT_TEXT = {c: str for c in ("alert_id", "alert_key", "store_id", "store_name", "region", "warehouse_team", "sku_id", "sku_name", "category", "reasons", "truth_type")}
+
+
 def run_dir(run_id: str) -> Path:
-    return config.RUNS_DIR / run_id
+    return config.RUNS_DIR / check_id(run_id)
 
 
 @dataclass
@@ -453,7 +473,11 @@ def load_run(run_id: str) -> RunData:
     d = run_dir(run_id)
     if not (d / "run.json").exists():
         raise LookupError(f"Detection run {run_id} not found")
-    inc = pd.read_csv(d / "incidents.csv", dtype={"store_id": str, "sku_id": str, "alert_id": str}, keep_default_na=False)
+    try:
+        # every text column as str: imported names default to their ids, and numeric-looking ones (EAN codes) would load as int
+        inc = pd.read_csv(d / "incidents.csv", dtype=_INCIDENT_TEXT, keep_default_na=False)
+    except pd.errors.EmptyDataError:  # runs saved with no incidents before the header was kept
+        inc = pd.DataFrame(columns=INCIDENT_COLUMNS)
     data = RunData(
         run=DetectionRun(**json.loads((d / "run.json").read_text(encoding="utf-8"))),
         score=np.load(d / "score.npy", mmap_mode="r"),

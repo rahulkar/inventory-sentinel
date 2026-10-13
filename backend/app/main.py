@@ -13,9 +13,9 @@ from app import compat  # noqa: E402
 
 compat.install()  # before anything imports SQLAlchemy (assistant sessions)
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, RedirectResponse  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from app import config  # noqa: E402
@@ -110,6 +110,12 @@ def app_config() -> AppConfig:
     )
 
 
+@app.exception_handler(LookupError)
+async def not_found(_: Request, exc: LookupError) -> JSONResponse:
+    """An unknown (or malformed) dataset / model / run id is a 404 on every route, not a 500."""
+    return JSONResponse({"detail": str(exc)}, status_code=404)
+
+
 for r in (datasets.router, training.router, runs.router, planner.router, jobs.router, settings.router, assistant.router):
     app.include_router(r)
 
@@ -125,7 +131,9 @@ if config.FRONTEND_DIST.exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
-        candidate = config.FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
+        dist = config.FRONTEND_DIST.resolve()
+        candidate = (dist / full_path).resolve()
+        # only files inside dist: "..%2F" or an absolute path would otherwise reach data/settings.json (the gateway key)
+        if full_path and candidate.is_relative_to(dist) and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(config.FRONTEND_DIST / "index.html")

@@ -38,7 +38,10 @@ def as_async_tool(fn: Callable[..., dict[str, Any]]) -> Callable[..., Any]:
             for p in fills:
                 if not kwargs.get(p) and ui.get(FROM_UI[p]):
                     kwargs[p] = ui[FROM_UI[p]]
-        return await asyncio.to_thread(fn, **kwargs)
+        try:
+            return await asyncio.to_thread(fn, **kwargs)
+        except LookupError as exc:  # e.g. a run id filled from the UI that has since been deleted: tell the model, don't end the turn
+            return T._err(str(exc))
 
     params = list(sig.parameters.values())
     if fills:

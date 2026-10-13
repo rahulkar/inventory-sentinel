@@ -393,7 +393,7 @@ export function DataPage() {
         </div>
         <div>
           {ds ? (
-            <DatasetDetail ds={ds} />
+            <DatasetDetail key={ds.id} ds={ds} />
           ) : (
             <div className="card">
               <EmptyState art={<DataInArt />}>

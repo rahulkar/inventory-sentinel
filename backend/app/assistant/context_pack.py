@@ -138,7 +138,7 @@ def render_context_pack(p: dict[str, Any]) -> str:
     s = p.get("selected_run")
     if s:
         ev = s.get("evaluation") or {}
-        lines.append(f"Selected run {s['run_id']}: severity {s['by_severity']}, likely types {s['by_type']}, {s['stores_affected']} stores affected" + (f"; on the evaluation window it caught {ev.get('incident_recall', 0):.0%} of injected incidents with {ev.get('alert_precision', 0):.0%} of alerts real (synthetic answer key)" if ev else "") + ".")
+        lines.append(f"Selected run {s['run_id']}: severity {s['by_severity']}, likely types {s['by_type']}, {s['stores_affected']} stores affected" + (f"; on the evaluation window it caught {ev.get('incident_recall') or 0:.0%} of injected incidents with {ev.get('alert_precision') or 0:.0%} of alerts real (synthetic answer key)" if ev else "") + ".")
         if s.get("top_stores"):
             lines.append("  Top stores by £ at risk: " + "; ".join(f"{x['label']} £{x['value_gbp']:,.0f} ({x['alerts']} alerts)" for x in s["top_stores"]))
     t = p.get("triage")

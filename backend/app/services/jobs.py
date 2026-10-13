@@ -186,9 +186,10 @@ def _worker_loop() -> None:
 
 def _ensure_worker() -> None:
     global _worker
-    if _worker is None or not _worker.is_alive():
-        _worker = threading.Thread(target=_worker_loop, name="sentinel-jobs", daemon=True)
-        _worker.start()
+    with _lock:  # two first submissions at once must not start two workers (jobs run one at a time)
+        if _worker is None or not _worker.is_alive():
+            _worker = threading.Thread(target=_worker_loop, name="sentinel-jobs", daemon=True)
+            _worker.start()
 
 
 def submit(
@@ -249,6 +250,7 @@ def cancel(job_id: str) -> bool:
             job.status = "cancelled"
             job.error = "Cancelled before it started."
             job.finished_at = now_iso()
+            _finished_ts[job_id] = time.time()
             _runners.pop(job_id, None)
             return True
         if job.status == "running":

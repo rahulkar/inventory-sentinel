@@ -83,7 +83,11 @@ export function TriagePanel({ runId, datasetId, modelId, datasetHasTruth }: { ru
   };
   const reset = async () => {
     if (!confirm("Forget every triage decision on this dataset?")) return;
-    await api.triage.reset(datasetId);
+    try {
+      await api.triage.reset(datasetId);
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
     setTick((t) => t + 1);
   };
   if (!s) return <Spinner />;

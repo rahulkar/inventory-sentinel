@@ -38,10 +38,18 @@ export function AlertDetail({ runId, alertId, answerKey, onClose, onChanged, sim
   const { openDrill, toast } = useApp();
   const [a, setA] = useState<Alert | null>(null);
   const load = useCallback(() => {
-    api.runs.alert(runId, alertId, answerKey).then(setA).catch((e) => toast(errorMessage(e), "error"));
+    let stale = false;
+    api.runs
+      .alert(runId, alertId, answerKey)
+      .then((x) => !stale && setA(x))
+      .catch((e) => !stale && toast(errorMessage(e), "error"));
+    return () => {
+      stale = true;
+    };
   }, [runId, alertId, answerKey, toast]);
   useEffect(load, [load]);
-  if (!a) return <div className="card"><Spinner /></div>;
+  // until the selected alert has loaded, never show (or record an outcome against) the previous one
+  if (!a || a.alert_id !== alertId) return <div className="card"><Spinner /></div>;
   return (
     <div className="card alert-detail" aria-live="polite">
       <div className="card-title">

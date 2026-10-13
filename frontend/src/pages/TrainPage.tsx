@@ -8,7 +8,7 @@ import { JobProgress } from "../components/JobProgress";
 import { Help, Spinner } from "../components/Layout";
 import { NextStep, TechnicalDetails } from "../components/TechnicalDetails";
 import type { ModelMeta, ModelSummary, TrainJob } from "../types";
-import { estimateSeconds, fmtDuration, MODEL_PLAIN, num, plain, SOURCE_LABEL } from "../utils";
+import { estimateSeconds, fmtDuration, isTerminal, MODEL_PLAIN, num, plain, SOURCE_LABEL } from "../utils";
 
 const CURVE_COLORS: Record<string, string> = { zscore: "#5f6878", iforest: C.series, autoencoder: "#7a1fa2", lof: "#0e7490", reranker: C.navy };
 
@@ -101,11 +101,17 @@ export function TrainPage() {
       }
     };
     void tick();
+    if (job && isTerminal(job.status)) {
+      return () => {
+        stop = true;
+      };
+    }
     const t = setInterval(tick, 1500);
     return () => {
       stop = true;
       clearInterval(t);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, job?.status]);
 
   // the run to show: the live one, else the most recent run on this dataset
@@ -236,7 +242,7 @@ export function TrainPage() {
               <div className="big">{plain.lift(bx.average_precision, baseAp) || plain.ap(bx.average_precision)}</div>
               <p className="muted" style={{ marginTop: 6 }}>
                 Of the 1,000 most unusual days it picks, <b style={{ color: "#fff" }}>{num.format(realTop(best) ?? 0)}</b> are real problems
-                {base ? <> against {num.format(realTop(base) ?? 0)} for the rule of thumb</> : null}. It catches {plain.pct(bx.incident_recall)} of hidden incidents and {bx.value_captured_pct?.toFixed(0)}% of the money lost
+                {base ? <> against {num.format(realTop(base) ?? 0)} for the rule of thumb</> : null}. It catches {plain.pct(bx.incident_recall)} of hidden incidents{bx.value_captured_pct !== null ? <> and {bx.value_captured_pct.toFixed(0)}% of the money lost</> : null}
                 {base?.metrics.value_captured_pct !== null && base ? <> (rule of thumb: {base.metrics.value_captured_pct?.toFixed(0)}%)</> : null}.
               </p>
               <div className="row mt">

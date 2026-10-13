@@ -60,6 +60,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const abortRef = useRef<AbortController | null>(null);
   const notified = useRef<Set<string>>(new Set());
   const sessionRef = useRef<string | null>(null);
+  const visibleRef = useRef(false);
+  visibleRef.current = dockOpen || page === "assistant";
   sessionRef.current = currentSessionId;
 
   const refreshStatus = useCallback(async () => {
@@ -117,7 +119,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             if (last && last.role === "assistant" && last.pending && (!last.author || last.author === e.data.author || !last.text)) {
               return [...cur.slice(0, -1), { ...last, author: e.data.author, text: last.text + e.data.delta }];
             }
-            return [...cur, { id: mid(), role: "assistant", author: e.data.author, text: e.data.delta, tools: [], proposals: [], pending: true }];
+            // another agent starts speaking: close the previous bubble (only the last one is closed when the stream ends)
+            const prev = last && last.role === "assistant" && last.pending ? [...cur.slice(0, -1), { ...last, pending: false, endedAt: Date.now() }] : cur;
+            return [...prev, { id: mid(), role: "assistant", author: e.data.author, text: e.data.delta, tools: [], proposals: [], pending: true, startedAt: Date.now() }];
           });
           break;
         case "tool_call":
@@ -177,11 +181,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       } finally {
         setStreaming(false);
         updateLast((m) => ({ ...m, pending: false, endedAt: Date.now() }));
-        if (!dockOpen && page !== "assistant") setUnread((u) => u + 1);
+        // read where the user is now, not when the question was sent (they may have closed the dock meanwhile)
+        if (!visibleRef.current) setUnread((u) => u + 1);
         void refreshSessions();
       }
     },
-    [streaming, ui, applyEvent, updateLast, refreshSessions, dockOpen, page],
+    [streaming, ui, applyEvent, updateLast, refreshSessions],
   );
 
   const abort = useCallback(() => abortRef.current?.abort(), []);

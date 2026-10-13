@@ -25,6 +25,7 @@
   --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --page-pad: 24px;
+  --topbar-h: 56px;
 }
 
 * { box-sizing: border-box; }
@@ -53,13 +54,15 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
   color: #fff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
+/* one row when everything fits; below 1200px the nav moves to its own full-width row (never clipped silently) */
 .topbar-inner {
-  max-width: 1360px; margin: 0 auto; padding: 0 var(--page-pad);
-  display: flex; align-items: center; gap: 18px; height: 56px;
+  max-width: 1680px; margin: 0 auto; padding: 0 var(--page-pad);
+  display: flex; align-items: center; gap: 16px; height: var(--topbar-h);
 }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; background: transparent; border: 0; color: #fff; cursor: pointer; font-family: inherit; padding: 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; background: transparent; border: 0; color: #fff; cursor: pointer; font-family: inherit; padding: 0; flex-shrink: 0; white-space: nowrap; }
+.topbar .clip { display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .brand-mark { width: 28px; height: 28px; border-radius: 7px; background: #fff; color: var(--primary); display: grid; place-items: center; font-weight: 800; font-size: 13px; }
-.nav { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
 .nav > * { flex-shrink: 0; }
 .nav-group { display: flex; align-items: center; gap: 2px; }
@@ -72,9 +75,26 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 .nav button:hover { background: rgba(255,255,255,0.12); color: #fff; }
 .nav button.active { background: rgba(255,255,255,0.2); color: #fff; }
 .nav .step { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.28); color: #fff; font-size: 11px; font-weight: 700; margin-right: 7px; }
-.topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; flex-shrink: 0; }
-@media (max-width: 1399px) { .topbar .hide-compact { display: none; } }
-.topbar .active-model { font-size: 12px; color: rgba(255,255,255,0.85); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.topbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+.topbar .active-model { font-size: 12px; color: rgba(255,255,255,0.85); display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; }
+.topbar .active-model .clip { max-width: 220px; }
+.ai-chip .clip { max-width: 150px; }
+@media (max-width: 1679px) {
+  .topbar .hide-compact { display: none; }
+  .topbar .active-model .clip { max-width: 170px; }
+  .nav-caption { display: none; }
+}
+@media (max-width: 1439px) {
+  .brand-word { display: none; }
+  .topbar .active-model .clip { max-width: 140px; }
+}
+@media (max-width: 1279px) {
+  :root { --topbar-h: 100px; }
+  .topbar-inner { flex-wrap: wrap; row-gap: 0; height: auto; min-height: var(--topbar-h); padding-top: 6px; }
+  .topbar-inner > .brand, .topbar-inner > .topbar-right { height: 44px; }
+  .topbar-inner > .nav { order: 3; flex: 1 0 100%; min-height: 44px; border-top: 1px solid rgba(255,255,255,0.15); }
+  .brand-word { display: inline; }
+}
 .topbar .active-model b { color: #fff; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--good); }
 .dot.off { background: var(--text-3); }
@@ -85,7 +105,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); 
 }
 .jobs-pill.busy { background: rgba(255,255,255,0.22); }
 .jobs-popover {
-  position: absolute; right: var(--page-pad); top: 60px; width: min(440px, calc(100vw - 2 * var(--page-pad)));
+  position: absolute; right: var(--page-pad); top: calc(100% + 4px); width: min(440px, calc(100vw - 2 * var(--page-pad)));
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 12px 32px rgba(18,24,38,0.18); padding: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 30;
 }
@@ -282,7 +302,8 @@ details.tech .tech-body { padding: 4px 14px 14px; display: flex; flex-direction:
 .alert.warn { background: #fff7e0; border-color: #f3dd9c; color: #6b4a00; }
 .alert.error { background: #fbe4e4; border-color: #f0b3b3; color: #8d1f1f; }
 .empty { padding: 28px; text-align: center; color: var(--text-3); border: 1px dashed var(--border-strong); border-radius: var(--radius); }
-.toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 50; max-width: calc(100vw - 40px); }
+/* above the drawer and chat panel, and clear of the chat button (22px + 54px) */
+.toasts { position: fixed; right: 20px; bottom: 92px; display: flex; flex-direction: column; gap: 8px; z-index: 70; max-width: calc(100vw - 40px); }
 .toast { padding: 10px 14px; border-radius: 8px; background: var(--text); color: #fff; box-shadow: var(--shadow); max-width: 440px; font-size: 13px; }
 .toast.success { background: #0d6b0d; }
 .toast.error { background: #a52a2a; }
@@ -469,7 +490,7 @@ table.data tr.muted td { color: var(--text-3); }
 }
 @media (max-width: 991px) {
   :root { --page-pad: 16px; }
-  .page-header .header-art, .story-link { display: none; }
+  .page-header .header-art { display: none; }
   .hero-card { grid-template-columns: 1fr; }
   .hero-card svg { max-width: 320px; margin: 0 auto; }
   .story-section, .story-section.flip, .story-section.wide, .story-section.wide.flip { grid-template-columns: 1fr; padding: 22px; }
@@ -493,9 +514,13 @@ table.data tr.muted td { color: var(--text-3); }
 @media (max-width: 767px) {
   .chat-panel { right: 0; bottom: 0; width: 100vw; height: 100vh; border-radius: 0; }
   .chat-fab { right: 14px; bottom: 14px; }
+  .chat-fab.open { display: none; } /* the full-screen panel has its own close button; the FAB would cover Send */
   /* phones are not a target, but keep the header usable */
-  .topbar-inner { gap: 8px; }
-  .nav { overflow-x: auto; }
+  :root { --topbar-h: 0px; }
+  .topbar { position: relative; } /* the wrapped header is too tall to pin on a phone */
+  .topbar-inner { gap: 8px; min-height: 0; }
+  .topbar-inner > .nav { flex-wrap: wrap; overflow: visible; padding: 4px 0; row-gap: 2px; }
+  .nav-divider { display: none; }
   .topbar .active-model span { display: none; }
   .jobs-pill { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
   .grid-4 { grid-template-columns: 1fr; }
@@ -528,7 +553,7 @@ table.data tr.clickable { cursor: pointer; }
 table.data tr.clickable:hover td { background: var(--surface-2); }
 table.data tr.selected td { background: var(--primary-soft); }
 table.data tr.best td { background: #f0f7ff; }
-.alert-detail { position: sticky; top: 72px; align-self: start; }
+.alert-detail { position: sticky; top: calc(var(--topbar-h) + 16px); align-self: start; }
 .alert-row { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
 .heatmap { display: grid; gap: 3px; overflow-x: auto; font-size: 12px; }
 .heatmap .hm-head { font-weight: 600; color: var(--text-2); text-align: center; padding: 2px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
