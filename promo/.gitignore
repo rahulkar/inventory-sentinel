@@ -1,0 +1,14 @@
+build/tools/node_modules/
+build/qa/
+build/dev.html
+build/ffpath.txt
+build/audio/tts_test/
+build/audio/vo_38/
+build/audio/vo_v1/
+build/audio/vo_proc/*_t.wav
+build/audio/music/*.wav
+build/audio/final_mix_raw.wav
+build/audio/final_mix.wav
+build/master_hq.mp4
+build/final_tmp.mp4
+*.mp4

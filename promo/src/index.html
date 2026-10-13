@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventory Sentinel</title>
+<style>
+/*FONTS*/
+html, body { margin: 0; height: 100%; background: #14100d; overflow: hidden; }
+body { display: grid; place-items: center; font-family: "Kalam", cursive; color: #2b2935; }
+#stage { display: block; box-shadow: 0 20px 80px rgba(0,0,0,.55); background: #f6eedd; }
+#start { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(20,16,13,.62); cursor: pointer; transition: opacity .5s; z-index: 5; }
+#start.gone { opacity: 0; pointer-events: none; }
+#start .btn { display: grid; place-items: center; gap: 6px; text-align: center; }
+#start .disc { width: 128px; height: 128px; border-radius: 50%; background: #f1b43a; border: 4px solid #2b2935; display: grid; place-items: center;
+  box-shadow: 6px 8px 0 rgba(43,41,53,.25); transform: rotate(-4deg); transition: transform .2s; }
+#start:hover .disc { transform: rotate(3deg) scale(1.06); }
+#start .disc::after { content: ""; border-left: 44px solid #2b2935; border-top: 28px solid transparent; border-bottom: 28px solid transparent; margin-left: 12px; }
+#start .lbl { font: 400 44px "Caveat Brush", cursive; color: #fdf2da; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+#start .sub { font: 700 28px "Caveat", cursive; color: #fdf2da; opacity: .9; margin-top: 10px; }
+#ui { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 18px 16px; display: flex; gap: 12px; align-items: center;
+  background: linear-gradient(transparent, rgba(0,0,0,.6)); opacity: 0; transition: opacity .3s; z-index: 4; }
+#ui.show { opacity: 1; }
+#ui button { font: 700 18px "Kalam", cursive; color: #fdf2da; background: rgba(255,255,255,.12); border: 2px solid rgba(253,242,218,.6); border-radius: 22px;
+  min-width: 44px; height: 40px; cursor: pointer; padding: 0 12px; }
+#ui button.on { background: #f1b43a; color: #2b2935; border-color: #f1b43a; }
+#scrub { flex: 1; accent-color: #f1b43a; }
+#time { color: #fdf2da; font: 700 18px "Kalam", cursive; min-width: 96px; text-align: right; }
+#caption { position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%); max-width: 80vw; text-align: center; z-index: 3;
+  font: 700 clamp(18px, 2.4vw, 34px) "Kalam", cursive; color: #fffbf2; background: rgba(20,16,13,.72); padding: .25em .7em; border-radius: .5em;
+  opacity: 0; transition: opacity .15s; pointer-events: none; }
+body.export #ui, body.export #start, body.export #caption { display: none; }
+body.export { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="caption"></div>
+<div id="start"><div class="btn"><div class="disc"></div><div class="sub">press play &middot; sound on</div></div></div>
+<div id="ui"><button id="play">&#9654;</button><input id="scrub" type="range" min="0" step="0.01" value="0"><span id="time">0:00</span><button id="cc" title="Captions (c)">CC</button><button id="fs" title="Full screen (f)">&#x26F6;</button></div>
+<audio id="track" preload="auto" src="/*AUDIO*/"></audio>
+<script>
+/*DATA*/
+</script>
+<script>
+/*CODE*/
+</script>
+</body>
+</html>

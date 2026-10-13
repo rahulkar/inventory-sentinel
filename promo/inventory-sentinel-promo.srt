@@ -1,0 +1,107 @@
+1
+00:00:01,540 --> 00:00:06,860
+Somewhere in your stores, right now, stock is quietly vanishing.
+
+2
+00:00:06,960 --> 00:00:09,770
+Theft. Till fraud. Miscounts.
+
+3
+00:00:09,680 --> 00:00:11,040
+Short deliveries.
+
+4
+00:00:10,910 --> 00:00:12,310
+The odd typo.
+
+5
+00:00:12,530 --> 00:00:18,850
+Up to two percent of sales… usually found weeks later, if at all.
+
+6
+00:00:19,410 --> 00:00:22,170
+Meet Inventory Sentinel.
+
+7
+00:00:22,090 --> 00:00:29,640
+It checks every item, in every store, every day, and points your teams to the few places that look wrong.
+
+8
+00:00:30,240 --> 00:00:31,910
+It's plug and play.
+
+9
+00:00:31,790 --> 00:00:38,630
+Sentinel speaks MCP, so it connects straight to the inventory system you already run.
+
+10
+00:00:38,490 --> 00:00:42,680
+Add a URL, press sync, and months of history flow in.
+
+11
+00:00:42,560 --> 00:00:43,950
+No migration. No rebuild.
+
+12
+00:00:43,870 --> 00:00:49,320
+And it's an MCP server too, so your own AI agents can plug right in.
+
+13
+00:00:49,920 --> 00:00:54,380
+Then it learns what normal looks like, with no labels at all.
+
+14
+00:00:54,230 --> 00:00:59,310
+Sixteen signals, from voided till lines to after-hours scans.
+
+15
+00:00:59,210 --> 00:01:08,480
+Unsupervised models compete on your own history, and the winner ranks real problems one point seven times better than today's rule.
+
+16
+00:01:09,240 --> 00:01:12,760
+For leadership, it all lands on one screen.
+
+17
+00:01:12,740 --> 00:01:20,710
+Three numbers: the value at risk, the alerts worth a visit this week, and how far it beats the old rule.
+
+18
+00:01:20,750 --> 00:01:21,910
+Where it happens.
+
+19
+00:01:21,950 --> 00:01:23,530
+What to work first.
+
+20
+00:01:23,500 --> 00:01:25,860
+No statistics degree required.
+
+21
+00:01:26,530 --> 00:01:29,180
+Got a tricky question? Just ask.
+
+22
+00:01:29,070 --> 00:01:32,460
+A team of AI agents splits the work.
+
+23
+00:01:32,330 --> 00:01:41,580
+One digs through the alerts, another plans investigator hours, all answering from live data, and never inventing a number.
+
+24
+00:01:41,710 --> 00:01:44,430
+And any change waits for your yes.
+
+25
+00:01:44,930 --> 00:01:49,000
+Every alert your teams close makes it a little smarter.
+
+26
+00:01:49,640 --> 00:01:52,500
+Inventory Sentinel. Plug it in.
+
+27
+00:01:52,450 --> 00:01:56,760
+Let it learn. Find the loss… before it's lost.

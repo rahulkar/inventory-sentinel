@@ -1,0 +1,47 @@
+[
+ {
+  "id": "s1",
+  "mood": "Hushed intrigue, like the opening of a bedtime mystery; a little conspiratorial. Each item in the list lands crisply, with a tiny playful beat between them.",
+  "text": "Somewhere in your stores, right now, stock is quietly vanishing. Theft. Till fraud. Miscounts. Short deliveries. The odd typo."
+ },
+ {
+  "id": "s2",
+  "mood": "A gentle, rueful sigh of a line; slightly slower.",
+  "text": "Up to two percent of sales... usually found weeks later, if at all."
+ },
+ {
+  "id": "s3",
+  "mood": "A bright, delighted reveal, as if introducing a charming hero.",
+  "text": "Meet Inventory Sentinel. It checks every item, in every store, every day, and points your teams to the few places that look wrong."
+ },
+ {
+  "id": "s4",
+  "mood": "Breezy, confident and upbeat; this is the easy part. Say 'MCP' as the letters M, C, P.",
+  "text": "It's plug and play. Sentinel speaks MCP, so it connects straight to the inventory system you already run. Add a URL, press sync, and months of history flow in. No migration. No rebuild. And it's an MCP server too, so your own AI agents can plug right in."
+ },
+ {
+  "id": "s5",
+  "mood": "Curious and quietly clever, building to a proud little flourish on 'one point seven times better'.",
+  "text": "Then it learns what normal looks like, with no labels at all. Sixteen signals, from voided till lines to after-hours scans. Unsupervised models compete on your own history, and the winner ranks real problems one point seven times better than today's rule."
+ },
+ {
+  "id": "s6",
+  "mood": "Assured and reassuring, addressing busy leaders; clean deliberate rhythm through the list, with a warm smile on the last line.",
+  "text": "For leadership, it all lands on one screen. Three numbers: the value at risk, the alerts worth a visit this week, and how far it beats the old rule. Where it happens. What to work first. No statistics degree required."
+ },
+ {
+  "id": "s7",
+  "mood": "Playful and inviting at first, then impressed and trustworthy; a gentle emphasis on 'never inventing a number' and 'waiting for your yes'.",
+  "text": "Got a tricky question? Just ask. A team of AI agents splits the work. One digs through the alerts, another plans investigator hours, all answering from live data, and never inventing a number. And any change waits for your yes."
+ },
+ {
+  "id": "s8",
+  "mood": "Warm and fond.",
+  "text": "Every alert your teams close makes it a little smarter."
+ },
+ {
+  "id": "s9",
+  "mood": "The grand, warm finale: name the product with pride, then three short confident beats, and land the last line with a knowing smile after a small pause.",
+  "text": "Inventory Sentinel. Plug it in. Let it learn. Find the loss... before it's lost."
+ }
+]
