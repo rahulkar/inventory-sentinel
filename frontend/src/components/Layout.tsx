@@ -41,8 +41,9 @@ export function Layout({ children }: { children: ReactNode }) {
     const fit = () => {
       const header = headerRef.current;
       const nav = navRef.current;
-      if (!header || !nav) return;
+      if (!header) return;
       header.classList.remove("wrap-nav");
+      if (!nav) return; // executive mode: the tabs always have their own row
       header.classList.toggle("wrap-nav", nav.scrollWidth > nav.clientWidth + 1);
     };
     fit();
@@ -52,7 +53,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <header className="topbar" ref={headerRef}>
+      <header className={`topbar ${exec ? "exec-top" : ""}`} ref={headerRef}>
         <div className="topbar-inner">
           <button className="brand" onClick={() => setPage("overview")} title="Home">
             <span className="brand-mark" aria-hidden="true">
@@ -63,18 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
             <span className="brand-word">Inventory Sentinel</span>
           </button>
-          {exec ? (
-          <nav className="nav" ref={navRef}>
-            {EXEC.map((p) => (
-              <button key={p.key} className={page === p.key ? "active" : ""} onClick={() => setPage(p.key)}>
-                {p.label}
-              </button>
-            ))}
-            <button className={`story-link exec-story ${page === "story" ? "active" : ""}`} onClick={() => setPage("story")}>
-              ▶ Story
-            </button>
-          </nav>
-          ) : (
+          {exec ? null : (
           <nav className="nav" ref={navRef}>
             <button className={`story-link ${page === "story" ? "active" : ""}`} onClick={() => setPage("story")}>
               How it works
@@ -158,6 +148,18 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
           </div>
         </div>
+        {exec ? (
+          <nav className="exec-tabs" aria-label="Executive">
+            {EXEC.map((p) => (
+              <button key={p.key} className={page === p.key ? "active" : ""} aria-current={page === p.key ? "page" : undefined} onClick={() => setPage(p.key)}>
+                {p.label}
+              </button>
+            ))}
+            <button className={page === "story" ? "active" : ""} aria-current={page === "story" ? "page" : undefined} onClick={() => setPage("story")}>
+              ▶ Story
+            </button>
+          </nav>
+        ) : null}
         {jobsOpen ? (
           <div className="jobs-popover" onMouseLeave={() => setJobsOpen(false)}>
             {activeJobs.length === 0 && recent.length === 0 ? <div className="muted small">No jobs yet.</div> : null}

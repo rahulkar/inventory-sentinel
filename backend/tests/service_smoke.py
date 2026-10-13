@@ -31,7 +31,7 @@ from app import config  # noqa: E402
 config.ensure_dirs()
 from app.assistant import proposals  # noqa: E402
 from app.schemas import ConnectorIn, DetectRequest, ModelSelection, PlanRequest, RetrainRequest, ScheduleIn, SimulateTriageRequest, TrainRequest  # noqa: E402
-from app.services import connectors, detection, exporter, jobs, model_export, planner, reranker, scheduler, sops, storage, sync, training, triage, vendor_tasks  # noqa: E402
+from app.services import connectors, detection, executive, exporter, jobs, model_export, planner, reranker, scheduler, sops, storage, sync, training, triage, vendor_tasks  # noqa: E402
 
 TOKEN = "smoke-token"
 
@@ -142,6 +142,11 @@ try:
     print("  simulate", triage.simulate(SimulateTriageRequest(run_id=run_id, days=5, per_day=25)))
     summ = triage.summary(ds_id, run_id)
     print("  triage", summ.reviewed, summ.precision, summ.can_retrain, summ.retrain_reason)
+    ex = executive.summary(run_id, days=0)
+    print(f"  executive: revenue £{ex.revenue_at_risk_gbp:,.0f} (cost £{ex.value_at_risk_gbp:,.0f}) on {ex.open_cases} open, {ex.closed_cases} closed, accuracy {ex.inventory_accuracy_pct}%, SLA {ex.sla_within_pct}%, {ex.overdue_cases} overdue")
+    check("executive overview", ex.closed_cases >= 1 and ex.revenue_at_risk_gbp >= ex.value_at_risk_gbp and ex.sla_within_pct is not None and ex.inventory_accuracy_pct is not None and ex.top_locations and ex.store_trend["series"], ex.model_dump(exclude={"options"}))
+    one = executive.summary(run_id, days=30, store_id=ex.top_locations[0]["store_id"])
+    check("executive overview filters by store and period", one.open_cases <= ex.open_cases and [x["store_id"] for x in one.top_locations] in ([ex.top_locations[0]["store_id"]], []) and len(one.store_trend["rows"]) == 4, one.model_dump(exclude={"options"}))
     res = wait(reranker.start_job(best, RetrainRequest()), "retrain with feedback")
     print("  feedback eval", json.dumps(res["feedback_eval"]["base"]), "->", json.dumps(res["feedback_eval"]["reranker"]))
     storage.set_active_model(best)

@@ -74,6 +74,12 @@ TRIAGE_OUTCOMES = ["confirmed_theft", "counting_error", "process_issue", "false_
 RETRAIN_MIN_REVIEWED = 30
 RETRAIN_MIN_EACH = 5
 
+# ---- executive overview
+EXEC_REVENUE_RED_GBP = 100_000.0  # revenue at risk above this shows red, below it amber
+EXEC_SLA_DAYS = 7  # a case should be resolved within this many days of its last flagged day
+EXEC_SLA_TARGET_PCT = 95.0
+EXEC_ACCURACY_TOLERANCE = 0.02  # a count is "accurate" within max(1 unit, 2% of expected)
+
 CACHE_COLUMNS = 4
 CACHE_PIPELINES = 4
 CACHE_RUNS = 3

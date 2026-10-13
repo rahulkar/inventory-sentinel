@@ -10,6 +10,7 @@ import type {
   DatasetMeta,
   DetectionRun,
   DetectionRunSummary,
+  ExecutiveSummary,
   Experiment,
   AlertSop,
   Connector,
@@ -146,6 +147,13 @@ export interface AlertQuery {
   answer_key?: boolean;
 }
 
+export interface ExecFilters {
+  days: number;
+  region?: string | null;
+  store_id?: string | null;
+  category?: string | null;
+}
+
 export function planQuery(p: Omit<PlanRequest, "run_id">, team?: string | null): string {
   return qs({ hours: p.hours, hourly_cost: p.hourly_cost, recovery_rate: p.recovery_rate, horizon_days: p.horizon_days, team, severities: p.severities ?? undefined, teams: p.teams ?? undefined });
 }
@@ -237,6 +245,7 @@ export const api = {
     get: (id: string) => request<DetectionRun>(`/api/runs/${id}`),
     delete: (id: string) => request<{ deleted: boolean }>(`/api/runs/${id}`, { method: "DELETE" }),
     dashboard: (id: string) => request<Dashboard>(`/api/runs/${id}/dashboard`),
+    executive: (id: string, f: ExecFilters) => request<ExecutiveSummary>(`/api/runs/${id}/executive${qs({ ...f })}`),
     alerts: (id: string, q: AlertQuery = {}) => request<AlertPage>(`/api/runs/${id}/alerts${qs({ ...q })}`),
     alert: (id: string, alertId: string, answerKey = false) => request<Alert>(`/api/runs/${id}/alerts/${alertId}${qs({ answer_key: answerKey || undefined })}`),
     alertsCsvUrl: (id: string) => `/api/runs/${id}/alerts.csv`,

@@ -6,8 +6,8 @@ import io
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.schemas import Alert, AlertPage, DetectionRun, DetectionRunSummary, DetectRequest, Job, SeriesMatch, SeriesResponse
-from app.services import detection, storage
+from app.schemas import Alert, AlertPage, DetectionRun, DetectionRunSummary, DetectRequest, ExecutiveSummary, Job, SeriesMatch, SeriesResponse
+from app.services import detection, executive, storage
 
 router = APIRouter(prefix="/api", tags=["detection"])
 
@@ -48,6 +48,12 @@ def delete_run(run_id: str) -> dict[str, bool]:
 def dashboard(run_id: str) -> dict:
     rd = _load(run_id)
     return {"run": rd.run.model_dump(), **rd.aggregates}
+
+
+@router.get("/runs/{run_id}/executive", response_model=ExecutiveSummary)
+def executive_summary(run_id: str, days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None) -> ExecutiveSummary:
+    _load(run_id)
+    return executive.summary(run_id, days=max(0, days), region=region or None, store_id=store_id or None, category=category or None)
 
 
 @router.get("/runs/{run_id}/alerts", response_model=AlertPage)

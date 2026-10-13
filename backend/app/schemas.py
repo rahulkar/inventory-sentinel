@@ -571,6 +571,28 @@ class TriageSummary(BaseModel):
     retrain_reason: str | None = None
 
 
+class ExecutiveSummary(BaseModel):
+    """Executive overview for one run, filtered by period, location and category."""
+
+    period: dict[str, Any]  # {start, end, days}
+    options: dict[str, Any]  # {regions, stores[{store_id, store_name}], categories}
+    revenue_at_risk_gbp: float
+    value_at_risk_gbp: float
+    open_cases: int
+    threshold_gbp: float
+    loss_prevented_gbp: float
+    closed_cases: int
+    inventory_accuracy_pct: float | None
+    accuracy_delta_pp: float | None
+    sla_within_pct: float | None
+    sla_target_pct: float
+    sla_days: int
+    overdue_cases: int
+    store_trend: dict[str, Any]  # {series: [names], rows: [{week, <name>: n}]}
+    category_trend: dict[str, Any]
+    top_locations: list[dict[str, Any]]
+
+
 class RetrainRequest(BaseModel):
     alpha: float = Field(0.4, ge=0.0, le=0.9)
     run_name: str | None = None

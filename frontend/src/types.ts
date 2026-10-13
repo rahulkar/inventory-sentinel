@@ -1022,3 +1022,28 @@ export interface SchedulerStatus {
   schedules: number;
   enabled: number;
 }
+
+export interface ExecTrend {
+  series: string[];
+  rows: ({ week: string } & Record<string, number | string>)[];
+}
+
+export interface ExecutiveSummary {
+  period: { start: string; end: string; days: number };
+  options: { regions: string[]; stores: { store_id: string; store_name: string }[]; categories: string[] };
+  revenue_at_risk_gbp: number;
+  value_at_risk_gbp: number;
+  open_cases: number;
+  threshold_gbp: number;
+  loss_prevented_gbp: number;
+  closed_cases: number;
+  inventory_accuracy_pct: number | null;
+  accuracy_delta_pp: number | null;
+  sla_within_pct: number | null;
+  sla_target_pct: number;
+  sla_days: number;
+  overdue_cases: number;
+  store_trend: ExecTrend;
+  category_trend: ExecTrend;
+  top_locations: { store_id: string; label: string; value_gbp: number }[];
+}
