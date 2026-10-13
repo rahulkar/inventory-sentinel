@@ -468,6 +468,11 @@ class PlanRequest(BaseModel):
     persist_by_type: dict[str, float] | None = None
     severities: list[Severity] | None = None
     teams: list[str] | None = None
+    regions: list[str] | None = None
+    store_ids: list[str] | None = None
+    categories: list[str] | None = None
+    date_from: str | None = None  # alerts that started on or after this day (YYYY-MM-DD)
+    date_to: str | None = None
     include_reviewed: bool = False
 
 

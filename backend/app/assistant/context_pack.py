@@ -99,6 +99,7 @@ def build_context_pack(ui: UiState, session_id: str | None) -> dict[str, Any]:
                 "evaluation": rd.run.evaluation.model_dump() if rd.run.evaluation else None,
                 "top_stores": rd.aggregates.get("top_stores", [])[:3], "top_categories": rd.aggregates.get("by_category", [])[:3],
             }
+            pack["filters"] = _filter_values(rd.run.dataset_id)
             ts = triage.summary(rd.run.dataset_id, run_id)
             pack["triage"] = {"reviewed": ts.reviewed, "precision": ts.precision, "open_alerts": ts.open_alerts, "simulated": ts.simulated, "can_retrain": ts.can_retrain}
         except LookupError:
@@ -114,6 +115,25 @@ def build_context_pack(ui: UiState, session_id: str | None) -> dict[str, Any]:
     pack["planner_defaults"] = config.PLANNER_DEFAULTS
     pack.update(_ops(ui))
     return pack
+
+
+_filter_cache: dict[str, dict[str, Any]] = {}
+
+
+def _filter_values(dataset_id: str) -> dict[str, Any]:
+    """Regions, categories, teams and the data period of a run's dataset, read from the small stores table (not the daily rows)."""
+    if dataset_id not in _filter_cache:
+        import pandas as pd
+
+        meta = storage.get_dataset_meta(dataset_id)
+        path = storage.dataset_dir(dataset_id) / "stores.csv"
+        st = pd.read_csv(path, dtype=str) if path.exists() else pd.DataFrame()
+        col = lambda c: sorted(st[c].dropna().unique().tolist()) if c in st else []  # noqa: E731
+        _filter_cache[dataset_id] = {
+            "data_start": meta.date_start if meta else None, "data_end": meta.date_end if meta else None,
+            "regions": col("region"), "teams": col("warehouse_team"), "categories": list(meta.categories) if meta else [], "n_stores": len(st),
+        }
+    return _filter_cache[dataset_id]
 
 
 def _ops(ui: UiState) -> dict[str, Any]:
@@ -183,6 +203,11 @@ def render_context_pack(p: dict[str, Any]) -> str:
         lines.append(f"Selected run {s['run_id']}: severity {s['by_severity']}, likely types {s['by_type']}, {s['stores_affected']} stores affected" + (f"; on the evaluation window it caught {ev.get('incident_recall') or 0:.0%} of injected incidents with {ev.get('alert_precision') or 0:.0%} of alerts real (demo vendor's answer key)" if ev else "") + ".")
         if s.get("top_stores"):
             lines.append("  Top stores by £ at risk: " + "; ".join(f"{x['label']} £{x['value_gbp']:,.0f} ({x['alerts']} alerts)" for x in s["top_stores"]))
+    f = p.get("filters")
+    if f:
+        lines.append(f"Filters for the selected run: data covers {f['data_start']} to {f['data_end']} ('last 30 days' = the 30 days ending {f['data_end']}); "
+                     f"regions: {', '.join(f['regions']) or 'none'}; categories: {', '.join(f['categories']) or 'none'}; teams: {', '.join(f['teams'][:12]) or 'none'}; "
+                     f"{f['n_stores']} stores (filter_options lists them).")
     t = p.get("triage")
     if t:
         lines.append(f"Triage: {t['reviewed']} alerts reviewed ({t['simulated']} simulated), precision {t['precision']}, {t['open_alerts']} open; retrain with feedback {'possible' if t['can_retrain'] else 'not yet possible'}.")

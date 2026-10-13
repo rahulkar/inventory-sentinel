@@ -105,6 +105,7 @@ model_detail = as_async_tool(T.model_detail)
 list_experiments = as_async_tool(T.list_experiments)
 list_detection_runs = as_async_tool(T.list_detection_runs)
 alert_summary = as_async_tool(T.alert_summary)
+filter_options = as_async_tool(T.filter_options)
 executive_overview = as_async_tool(T.executive_overview)
 anomaly_trend = as_async_tool(T.anomaly_trend)
 hotspots = as_async_tool(T.hotspots)
@@ -133,9 +134,9 @@ VENDOR = [list_connectors, connector_status, vendor_lookup, list_vendor_tasks]
 OPS = [list_schedules, schedule_history]
 SOP = [get_sop, find_sop]
 MODEL = [list_models, model_detail, list_experiments, available_algorithms, triage_summary]
-ALERTS = [list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series]
-PLAN = [list_detection_runs, alert_summary, investigation_plan, compare_plans, hotspots]
-EXEC = [executive_overview]
+ALERTS = [filter_options, list_detection_runs, alert_summary, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series]
+PLAN = [filter_options, list_detection_runs, alert_summary, investigation_plan, compare_plans, hotspots]
+EXEC = [executive_overview, filter_options]
 JOBS = [propose_job]
 
 
@@ -150,6 +151,15 @@ def unique(*groups: list[Callable[..., Any]]) -> list[Callable[..., Any]]:
     return out
 
 
+def _scope_label(a: dict[str, Any]) -> str:
+    parts = [str(a[k]) for k in ("region", "store_id", "category", "team") if a.get(k)]
+    if a.get("days"):
+        parts.append(f"last {a['days']} days")
+    elif a.get("start_date") or a.get("end_date"):
+        parts.append(f"{a.get('start_date') or '...'} to {a.get('end_date') or '...'}")
+    return f" ({', '.join(parts)})" if parts else ""
+
+
 def tool_label(name: str, args: dict[str, Any]) -> str:
     """Human-readable labels for the activity chips and the thinking trail in the chat UI."""
     a = args or {}
@@ -162,11 +172,12 @@ def tool_label(name: str, args: dict[str, Any]) -> str:
         "model_detail": f"Reading model {a.get('model_id') or 'in use'}",
         "list_experiments": "Listing training runs",
         "list_detection_runs": "Listing detection runs",
-        "alert_summary": "Summarising the detection run",
-        "executive_overview": "Reading the board figures" + (f" for the last {a.get('days')} days" if a.get("days") else " for all data" if a.get("days") == 0 else ""),
-        "anomaly_trend": f"Reading the anomaly trend by {a.get('by', 'severity')}",
-        "hotspots": f"Finding hotspots by {a.get('by', 'store')}",
-        "list_alerts": "Listing alerts" + (f" ({a.get('severity')})" if a.get("severity") else ""),
+        "alert_summary": "Summarising the detection run" + _scope_label(a),
+        "filter_options": "Reading regions, stores and categories",
+        "executive_overview": "Reading the board figures" + (f" for the last {a.get('days')} days" if a.get("days") else " for all data" if a.get("days") == 0 else "") + _scope_label({**a, "days": None}),
+        "anomaly_trend": f"Reading the anomaly trend by {a.get('by', 'severity')}" + _scope_label({**a, "days": None}),
+        "hotspots": f"Finding hotspots by {a.get('by', 'store')}" + _scope_label(a),
+        "list_alerts": "Listing alerts" + (f" ({a.get('severity')})" if a.get("severity") else "") + _scope_label(a),
         "explain_alert": f"Explaining alert {a.get('alert_id') or '(open)'}",
         "sku_drilldown": f"Drilling into {a.get('store_id') or ''} {a.get('sku_id') or ''}".strip(),
         "search_series": f"Searching for '{a.get('q', '')}'",

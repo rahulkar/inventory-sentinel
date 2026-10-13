@@ -15,6 +15,7 @@ from app import config
 from app.assistant import knowledge
 from app.assistant import plain_language as pl
 from app.assistant import proposals
+from app.assistant import scope as S
 from app.assistant.context_pack import UiState, build_context_pack
 from app.schemas import PlanRequest
 from app.services import connectors, detection, jobs, planner, registry, scheduler, sops, storage, training, triage, vendor_tasks
@@ -64,6 +65,50 @@ def _run_note(run_id: str) -> dict[str, Any]:
         "run_id": run_id, "model": rd.run.model_label, "model_id": rd.run.model_id, "model_in_use": in_use,
         "model_note": "Produced by the model in use." if in_use else f"Produced by {rd.run.model_label} ({rd.run.model_id}), which is NOT the model in use; say so and offer to run detection with the model in use.",
     }
+
+
+FILTERS_DOC = """region, store_id, category, team: Optional filters, as the user says them (case-insensitive names or ids,
+            comma-separated for several), e.g. "London", "S014" or "Leeds", "beauty, womenswear". An unknown value comes back as
+            an error listing the valid ones.
+        days: Period ending on the data's last day, e.g. 30 or 90; 0 = all data.
+        start_date: Explicit period start (YYYY-MM-DD) instead of days.
+        end_date: Explicit period end (YYYY-MM-DD)."""
+
+
+def _doc(fn: Any) -> Any:
+    fn.__doc__ = fn.__doc__.replace("{FILTERS}", FILTERS_DOC)
+    return fn
+
+
+def _scoped(rid: str, days: int | None = 0, start_date: str | None = None, end_date: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, team: str | None = None) -> tuple[Any, Any, S.Scope]:
+    """Load a run and resolve the filters against its dataset (raises S.ScopeError or LookupError)."""
+    rd = storage.load_run(rid)
+    ds = storage.load_dataset(rd.run.dataset_id)
+    return rd, ds, S.build(ds, days=days, start_date=start_date, end_date=end_date, region=region, store=store_id, category=category, team=team)
+
+
+def filter_options(run_id: str | None = None) -> dict[str, Any]:
+    """The values the user can filter by: regions, stores (id and name), categories, warehouse teams, and the period the data
+    covers (so "last 30 days" or "September" can be turned into dates). Call it when unsure what a place or category is called.
+
+    Args:
+        run_id: Detection run id; defaults to the selected/newest run (or the newest dataset when there is no run).
+    """
+    rid = _run_id(run_id)
+    try:
+        if rid:
+            ds = storage.load_dataset(storage.load_run(rid).run.dataset_id)
+        else:
+            d = _dataset(None)
+            ds = storage.load_dataset(d.id) if d else None
+    except LookupError as exc:
+        return _err(str(exc))
+    if ds is None:
+        return _err("No dataset yet.")
+    o = S.options(ds)
+    return _ok(run_id=rid, data_covers=f"{ds.dates[0]} to {ds.dates[-1]}", period_rule=S.PERIOD_RULE,
+               regions=[v for v, _ in o["region"]], categories=[v for v, _ in o["category"]], teams=[v for v, _ in o["team"]],
+               stores=[f"{v} {n[1]}" for v, n in o["store"]][:200])
 
 
 # ---------------------------------------------------------------- datasets
@@ -194,19 +239,34 @@ def list_detection_runs() -> dict[str, Any]:
     return _ok(count=len(rs), runs=[r.model_dump() for r in rs])
 
 
-def alert_summary(run_id: str | None = None) -> dict[str, Any]:
-    """Summary of a detection run: alerts by severity and likely type, value at risk, stores affected, evaluation against the synthetic answer key, top stores and categories.
+@_doc
+def alert_summary(run_id: str | None = None, days: int = 0, start_date: str | None = None, end_date: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, team: str | None = None) -> dict[str, Any]:
+    """Summary of a detection run, optionally for a period, region, store, category or team: alerts by severity and likely type,
+    value at risk, stores affected, top stores, categories, regions and teams (unfiltered it also has the evaluation against a demo answer key).
 
     Args:
         run_id: Detection run id (run_...). Defaults to the run selected in the app, else the newest run of the model in use.
+        {FILTERS}
     """
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet. Run detection on the Act page (or propose a detect job).")
     try:
-        rd = storage.load_run(rid)
-    except LookupError as exc:
+        rd, _, sc = _scoped(rid, days, start_date, end_date, region, store_id, category, team)
+    except (LookupError, S.ScopeError) as exc:
         return _err(str(exc))
+    if sc.active:
+        inc = rd.incidents
+        a = inc[sc.mask(inc)] if len(inc) else inc
+        return _ok(
+            **_run_note(rid), filters=sc.describe(), dataset=rd.run.dataset_name, alerts=int(len(a)),
+            value_at_risk_gbp=round(float(a["value_at_risk_gbp"].sum()), 2) if len(a) else 0.0, units_at_risk=int(a["units_at_risk"].sum()) if len(a) else 0,
+            stores_affected=int(a["store_id"].nunique()) if len(a) else 0,
+            by_severity={str(k): int(v) for k, v in a["severity"].value_counts().items()} if len(a) else {},
+            by_likely_type={pl.TYPE_LABEL.get(t, t): int(n) for t, n in a["likely_type"].value_counts().items()} if len(a) else {},
+            top_stores=S.top(a, "store_id", "store_name", 5), top_categories=S.top(a, "category", n=5), top_regions=S.top(a, "region", n=5), top_teams=S.top(a, "warehouse_team", n=5),
+            thresholds=rd.run.thresholds.model_dump(), note=None if len(a) else "No alerts match these filters.",
+        )
     k = rd.run.kpis
     return _ok(
         **_run_note(rid), dataset=rd.run.dataset_name, rows_scored=k.rows_scored, alerts=k.incidents, flagged_days=k.flagged_rows, pct_days_flagged=k.pct_rows_flagged,
@@ -218,42 +278,83 @@ def alert_summary(run_id: str | None = None) -> dict[str, Any]:
     )
 
 
-def anomaly_trend(run_id: str | None = None, by: str = "severity", days: int = 28) -> dict[str, Any]:
-    """Daily trend of flagged store-SKU-days in a run, split by severity or by likely type, plus £ at risk per day.
+def anomaly_trend(run_id: str | None = None, by: str = "severity", days: int = 28, start_date: str | None = None, end_date: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, team: str | None = None) -> dict[str, Any]:
+    """Daily trend of flagged store-SKU-days in a run, split by severity or by likely type, plus £ at risk per day; optionally for a region, store, category or team.
 
     Args:
         run_id: Detection run id; defaults to the selected/newest run.
         by: "severity" or "type".
-        days: How many most recent days to return (max 90).
+        days: How many days, ending on the data's last day (or on end_date), to return (max 90).
+        start_date: Explicit period start (YYYY-MM-DD); at most 90 days are returned.
+        end_date: Explicit period end (YYYY-MM-DD).
+        region: Optional region(s), case-insensitive, comma-separated for several.
+        store_id: Optional store id(s) or name(s).
+        category: Optional category or categories.
+        team: Optional warehouse team(s).
     """
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet.")
-    rd = storage.load_run(rid)
-    tr = rd.aggregates.get("trend", [])[-max(1, min(int(days), 90)) :]
+    n = 90 if start_date else max(1, min(int(days or 90), 90))
+    try:
+        rd, ds, sc = _scoped(rid, 0 if start_date else n, start_date, end_date, region, store_id, category, team)
+    except (LookupError, S.ScopeError) as exc:
+        return _err(str(exc))
+    tr = _trend(rd, ds, sc) if sc.place_active else rd.aggregates.get("trend", [])
+    tr = [t for t in tr if (not sc.date_from or t["date"] >= sc.date_from) and (not sc.date_to or t["date"] <= sc.date_to)]
+    tr = tr[:n] if start_date else tr[-n:]
     if by == "type":
         rows = [{"date": t["date"], "value_gbp": t["value_gbp"], **{pl.TYPE_LABEL.get(k[5:], k[5:]): v for k, v in t.items() if k.startswith("type:")}} for t in tr]
     else:
         rows = [{"date": t["date"], "value_gbp": t["value_gbp"], "critical": t.get("critical", 0), "high": t.get("high", 0), "medium": t.get("medium", 0)} for t in tr]
-    return _ok(**_run_note(rid), by=by, days=rows)
+    return _ok(**_run_note(rid), filters=sc.describe(), by=by, days=rows)
 
 
-def hotspots(run_id: str | None = None, by: str = "store", top: int = 10) -> dict[str, Any]:
-    """Where problems concentrate: top stores, SKUs, warehouse teams, categories or regions by £ at risk.
+def _trend(rd: Any, ds: Any, sc: S.Scope) -> list[dict[str, Any]]:
+    """The run's daily trend (same shape as detection.aggregates' "trend") restricted to the scope's places."""
+    rows = np.flatnonzero(S.row_mask(ds, sc) & (np.asarray(rd.severity) > 0))
+    n_days = len(ds.dates)
+    day = np.asarray(ds.daily["date_idx"])[rows].astype(np.int64)
+    sev = np.asarray(rd.severity)[rows].astype(np.int64)
+    var = np.asarray(ds.daily["expected_closing"])[rows].astype(np.int64) - np.asarray(ds.daily["counted_closing"])[rows].astype(np.int64)
+    cost = ds.skus["unit_cost"].to_numpy(dtype=np.float64)[np.asarray(ds.daily["sku_code"])[rows].astype(np.int64)]
+    val = np.bincount(day, weights=np.maximum(var, 0) * cost, minlength=n_days)
+    by_sev = {name: np.bincount(day[sev == k], minlength=n_days) for k, name in detection.SEV_NAME.items()}
+    inc = rd.incidents
+    sub = inc[S.Scope(regions=sc.regions, store_ids=sc.store_ids, categories=sc.categories, teams=sc.teams).mask(inc)] if len(inc) else inc
+    by_type = {t: np.bincount(sub.loc[sub["likely_type"] == t, "start_day"].to_numpy(dtype=np.int64), minlength=n_days) for t in sorted(set(sub["likely_type"]))} if len(sub) else {}
+    out = []
+    for d in range(n_days):
+        row = {"date": str(ds.dates[d]), "value_gbp": round(float(val[d]), 2), **{k: int(v[d]) for k, v in by_sev.items()}}
+        row.update({f"type:{t}": int(v[d]) for t, v in by_type.items()})
+        out.append(row)
+    return out
+
+
+@_doc
+def hotspots(run_id: str | None = None, by: str = "store", top: int = 10, days: int = 0, start_date: str | None = None, end_date: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, team: str | None = None) -> dict[str, Any]:
+    """Where problems concentrate: top stores, SKUs, warehouse teams, categories or regions by £ at risk, optionally within a period,
+    region, store, category or team (e.g. top stores in London over the last 30 days, top SKUs in beauty for the last 90 days).
 
     Args:
         run_id: Detection run id; defaults to the selected/newest run.
         by: "store", "sku", "team", "category" or "region".
         top: How many (max 20).
+        {FILTERS}
     """
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet.")
-    rd = storage.load_run(rid)
-    key = {"store": "top_stores", "sku": "top_skus", "team": "top_teams", "category": "by_category", "region": "by_region"}.get(by)
-    if key is None:
+    cols = {"store": ("store_id", "store_name"), "sku": ("sku_id", "sku_name"), "team": ("warehouse_team", None), "category": ("category", None), "region": ("region", None)}.get(by)
+    if cols is None:
         return _err("by must be store, sku, team, category or region.")
-    return _ok(**_run_note(rid), by=by, hotspots=rd.aggregates.get(key, [])[: max(1, min(int(top), 20))])
+    try:
+        rd, _, sc = _scoped(rid, days, start_date, end_date, region, store_id, category, team)
+    except (LookupError, S.ScopeError) as exc:
+        return _err(str(exc))
+    inc = rd.incidents
+    a = inc[sc.mask(inc)] if len(inc) else inc
+    return _ok(**_run_note(rid), filters=sc.describe(), by=by, alerts_in_scope=int(len(a)), hotspots=S.top(a, cols[0], cols[1], max(1, min(int(top), 20))))
 
 
 def executive_overview(days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None, run_id: str | None = None) -> dict[str, Any]:
@@ -262,10 +363,10 @@ def executive_overview(days: int = 90, region: str | None = None, store_id: str 
     against the previous period, resolution within SLA, overdue cases, weekly new-alert trends for the top stores and categories, and the top 5 stores.
 
     Args:
-        days: Period ending on the data's last day: 30, 90, or 0 for all data.
-        region: Optional region name, e.g. "London".
-        store_id: Optional store id, e.g. "S014".
-        category: Optional category, e.g. "womenswear".
+        days: Period ending on the data's last day, e.g. 30 or 90; 0 for all data.
+        region: Optional region name, e.g. "London" (case-insensitive; one value).
+        store_id: Optional store id or name, e.g. "S014" or "Leeds" (one value).
+        category: Optional category, e.g. "womenswear" (one value).
         run_id: Detection run id; defaults to the selected/newest run.
     """
     rid = _run_id(run_id)
@@ -274,24 +375,29 @@ def executive_overview(days: int = 90, region: str | None = None, store_id: str 
     from app.services import executive
 
     try:
-        s = executive.summary(rid, days=max(0, int(days)), region=region or None, store_id=store_id or None, category=category or None)
-    except LookupError as exc:
+        _, _, sc = _scoped(rid, 0, None, None, region, store_id, category, None)
+        for what, v in (("region", sc.regions), ("store", sc.store_ids), ("category", sc.categories)):
+            if v and len(v) > 1:
+                return _err(f"The board figures take one {what} at a time, not {', '.join(v)}: call once per {what}, or use alert_summary for several together.")
+        s = executive.summary(rid, days=max(0, int(days)), region=(sc.regions or [None])[0], store_id=(sc.store_ids or [None])[0], category=(sc.categories or [None])[0])
+    except (LookupError, S.ScopeError) as exc:
         return _err(str(exc))
     out = s.model_dump(exclude={"options"})
     out["revenue_at_risk_level"] = "red" if s.revenue_at_risk_gbp > s.threshold_gbp else "amber"
+    out["filters"] = {k: v for k, v in sc.describe().items() if k in ("regions", "stores", "categories")}
     return _ok(**_run_note(rid), **out)
 
 
-def list_alerts(run_id: str | None = None, severity: str | None = None, likely_type: str | None = None, store_id: str | None = None, team: str | None = None, category: str | None = None, status: str | None = None, sort: str = "priority", limit: int = 10) -> dict[str, Any]:
-    """List alerts (incidents) from a detection run with filters. Each alert has severity, likely type, value at risk, P(true anomaly), reasons and triage status.
+@_doc
+def list_alerts(run_id: str | None = None, severity: str | None = None, likely_type: str | None = None, store_id: str | None = None, team: str | None = None, category: str | None = None, region: str | None = None, days: int = 0, start_date: str | None = None, end_date: str | None = None, status: str | None = None, sort: str = "priority", limit: int = 10) -> dict[str, Any]:
+    """List alerts (incidents) from a detection run with filters (severity, type, region, store, category, team, period, status).
+    Each alert has severity, likely type, value at risk, P(true anomaly), reasons and triage status; total_matching counts all matches.
 
     Args:
         run_id: Detection run id; defaults to the selected/newest run.
         severity: "critical", "high" or "medium" (comma-separated for several).
         likely_type: theft_external, theft_internal, scan_fraud, counting_error, receiving_error, data_entry_error, velocity_shift or unclear (comma-separated allowed).
-        store_id: Store id such as S001.
-        team: Warehouse team name.
-        category: Category such as beauty.
+        {FILTERS}
         status: "open", "reviewed" or a triage outcome.
         sort: "priority" (default), "value", "p_true" or "recent".
         limit: Number of alerts (max 20).
@@ -299,11 +405,16 @@ def list_alerts(run_id: str | None = None, severity: str | None = None, likely_t
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet.")
-    split = lambda v: [x.strip() for x in v.split(",") if x.strip()] if v else None  # noqa: E731
-    page = detection.list_alerts(rid, severity=split(severity), likely_type=split(likely_type), store_id=store_id, team=team, category=category, status=status, sort=sort, limit=max(1, min(int(limit), ROW_CAP)))
-    return _ok(**_run_note(rid), total_matching=page.total, alerts=[{
+    try:
+        _, _, sc = _scoped(rid, days, start_date, end_date, region, store_id, category, team)
+    except (LookupError, S.ScopeError) as exc:
+        return _err(str(exc))
+    split = lambda v: [x.strip().lower() for x in v.split(",") if x.strip()] if v else None  # noqa: E731
+    page = detection.list_alerts(rid, severity=split(severity), likely_type=split(likely_type), store_id=sc.store_ids, team=sc.teams, category=sc.categories, region=sc.regions,
+                                 date_from=sc.date_from, date_to=sc.date_to, status=status, sort=sort, limit=max(1, min(int(limit), ROW_CAP)))
+    return _ok(**_run_note(rid), filters=sc.describe(), total_matching=page.total, alerts=[{
         "alert_id": a.alert_id, "severity": a.severity, "store": f"{a.store_id} {a.store_name}", "sku": f"{a.sku_id} {a.sku_name}", "category": a.category,
-        "team": a.warehouse_team, "dates": f"{a.start_date} to {a.end_date}" if a.n_days > 1 else a.start_date, "likely_type": pl.TYPE_LABEL.get(a.likely_type, a.likely_type),
+        "region": a.region, "team": a.warehouse_team, "dates": f"{a.start_date} to {a.end_date}" if a.n_days > 1 else a.start_date, "likely_type": pl.TYPE_LABEL.get(a.likely_type, a.likely_type),
         "value_at_risk_gbp": a.value_at_risk_gbp, "units_at_risk": a.units_at_risk, "p_true": a.p_true, "status": a.status, "top_reason": a.reasons[0] if a.reasons else None,
     } for a in page.alerts])
 
@@ -375,7 +486,7 @@ def search_series(q: str, run_id: str | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- planner and triage
-def investigation_plan(hours: float = 120, hourly_cost: float = 28, recovery_rate: float = 0.4, horizon_days: int = 28, run_id: str | None = None, team: str | None = None, severities: str | None = None) -> dict[str, Any]:
+def investigation_plan(hours: float = 120, hourly_cost: float = 28, recovery_rate: float = 0.4, horizon_days: int = 28, run_id: str | None = None, team: str | None = None, severities: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, days: int = 0, start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
     """Plan investigator time: which open alerts to work, expected money recovered, cost, return on cost, breakeven hours, split by team, type and severity.
 
     Args:
@@ -384,29 +495,39 @@ def investigation_plan(hours: float = 120, hourly_cost: float = 28, recovery_rat
         recovery_rate: Share of the money at risk recovered when a real problem is investigated (0-1).
         horizon_days: Days of continuing loss that acting now prevents.
         run_id: Detection run id; defaults to the selected/newest run.
-        team: Limit to one warehouse team.
+        team: Limit to warehouse team(s), comma-separated for several.
         severities: Comma-separated severities to include (default all).
+        region: Limit to region(s), case-insensitive, comma-separated for several.
+        store_id: Limit to store id(s) or name(s).
+        category: Limit to category or categories.
+        days: Only alerts that started in the last N days of the data (0 = all).
+        start_date: Only alerts that started on or after this day (YYYY-MM-DD).
+        end_date: Only alerts that started on or before this day (YYYY-MM-DD).
     """
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet.")
-    sev = [s.strip() for s in severities.split(",")] if severities else None
+    sev = [s.strip().lower() for s in severities.split(",")] if severities else None
     try:
-        p = planner.plan(PlanRequest(run_id=rid, hours=float(hours), hourly_cost=float(hourly_cost), recovery_rate=float(recovery_rate), horizon_days=int(horizon_days), teams=[team] if team else None, severities=sev))  # type: ignore[arg-type]
+        _, _, sc = _scoped(rid, days, start_date, end_date, region, store_id, category, team)
+        p = planner.plan(PlanRequest(run_id=rid, hours=float(hours), hourly_cost=float(hourly_cost), recovery_rate=float(recovery_rate), horizon_days=int(horizon_days), teams=sc.teams, severities=sev,  # type: ignore[arg-type]
+                                     regions=sc.regions, store_ids=sc.store_ids, categories=sc.categories, date_from=sc.date_from, date_to=sc.date_to))
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
     q = f"hours={hours}&hourly_cost={hourly_cost}&recovery_rate={recovery_rate}&horizon_days={horizon_days}"
+    narrowed = bool(sc.regions or sc.store_ids or sc.categories or sc.date_from or sc.date_to)
     return _ok(
-        **_run_note(rid), hours=p.hours, alerts_selected=p.n_selected, open_alerts=p.n_candidates, hours_used=p.hours_used, cost_gbp=p.cost, expected_recovered_gbp=p.expected_recovered,
+        **_run_note(rid), filters=sc.describe(), hours=p.hours, alerts_selected=p.n_selected, open_alerts=p.n_candidates, hours_used=p.hours_used, cost_gbp=p.cost, expected_recovered_gbp=p.expected_recovered,
         net_benefit_gbp=p.net_benefit, return_on_cost=p.roi, breakeven_hours=p.breakeven_hours, naive_order_expected_gbp=p.naive_expected, calibration_source=p.calibration_source,
         by_team=[b.model_dump() for b in p.by_team[:8]], by_type=[{**b.model_dump(), "key": pl.TYPE_LABEL.get(b.key, b.key)} for b in p.by_type], by_severity=[b.model_dump() for b in p.by_severity],
         first_10=[r.model_dump(include={"priority", "alert_id", "team", "store_name", "sku_name", "likely_type", "severity", "p_true", "expected_value_gbp", "minutes"}) for r in p.top_rows[:10]],
         worklist_csv=f"/api/plan/{rid}/worklist.csv?{q}", worklist_zip=f"/api/plan/{rid}/worklist.zip?{q}",
+        worklist_note="The downloadable work lists cover all open alerts, not the region/store/category/period filters used here; say so if you share them." if narrowed else None,
         caveat="Estimates: they depend on the recovery rate and on P(true anomaly).",
     )
 
 
-def compare_plans(hours_list: list[float], hourly_cost: float = 28, recovery_rate: float = 0.4, horizon_days: int = 28, run_id: str | None = None) -> dict[str, Any]:
+def compare_plans(hours_list: list[float], hourly_cost: float = 28, recovery_rate: float = 0.4, horizon_days: int = 28, run_id: str | None = None, region: str | None = None, store_id: str | None = None, category: str | None = None, team: str | None = None, days: int = 0) -> dict[str, Any]:
     """Compare several investigator-hour budgets side by side (alerts covered, expected recovery, cost, return on cost).
 
     Args:
@@ -419,11 +540,16 @@ def compare_plans(hours_list: list[float], hourly_cost: float = 28, recovery_rat
     rid = _run_id(run_id)
     if not rid:
         return _err("No detection run yet.")
+    try:
+        _, _, sc = _scoped(rid, days, None, None, region, store_id, category, team)
+    except (LookupError, S.ScopeError) as exc:
+        return _err(str(exc))
     rows = []
     for h in list(hours_list)[:6]:
-        p = planner.plan(PlanRequest(run_id=rid, hours=float(h), hourly_cost=float(hourly_cost), recovery_rate=float(recovery_rate), horizon_days=int(horizon_days)))
+        p = planner.plan(PlanRequest(run_id=rid, hours=float(h), hourly_cost=float(hourly_cost), recovery_rate=float(recovery_rate), horizon_days=int(horizon_days),
+                                     teams=sc.teams, regions=sc.regions, store_ids=sc.store_ids, categories=sc.categories, date_from=sc.date_from, date_to=sc.date_to))
         rows.append({"hours": p.hours, "alerts": p.n_selected, "expected_recovered_gbp": p.expected_recovered, "cost_gbp": p.cost, "return_on_cost": p.roi, "net_benefit_gbp": p.net_benefit})
-    return _ok(**_run_note(rid), plans=rows, caveat="Estimates: they depend on the recovery rate and on P(true anomaly).")
+    return _ok(**_run_note(rid), filters=sc.describe(), plans=rows, caveat="Estimates: they depend on the recovery rate and on P(true anomaly).")
 
 
 def triage_summary(dataset_id: str | None = None, run_id: str | None = None) -> dict[str, Any]:
@@ -702,7 +828,7 @@ def find_sop(query: str, k: int = 3) -> dict[str, Any]:
 
 CATALOGUE = [
     list_datasets, describe_dataset, preview_rows, available_algorithms, list_models, model_detail, list_experiments,
-    list_detection_runs, alert_summary, executive_overview, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series,
+    filter_options, list_detection_runs, alert_summary, executive_overview, anomaly_trend, hotspots, list_alerts, explain_alert, sku_drilldown, search_series,
     investigation_plan, compare_plans, triage_summary, propose_job, job_status, search_docs, explain_metric, app_state, usage_summary,
     list_connectors, connector_status, vendor_lookup, list_vendor_tasks, list_schedules, schedule_history, get_sop, find_sop,
 ]

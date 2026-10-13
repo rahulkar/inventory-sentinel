@@ -261,23 +261,34 @@ def to_alert(r: Any, status: dict[str, str], answer_key: bool) -> Alert:
     )
 
 
-def list_alerts(run_id: str, *, severity: list[str] | None = None, likely_type: list[str] | None = None, store_id: str | None = None, team: str | None = None, category: str | None = None, status: str | None = None, q: str | None = None, sort: str = "priority", limit: int = 50, offset: int = 0, answer_key: bool = False) -> AlertPage:
+def _many(v: str | list[str] | None) -> list[str] | None:
+    return None if not v else [v] if isinstance(v, str) else list(v)
+
+
+def scope_mask(df: pd.DataFrame, *, region: str | list[str] | None = None, store_id: str | list[str] | None = None, team: str | list[str] | None = None, category: str | list[str] | None = None, date_from: str | None = None, date_to: str | None = None) -> np.ndarray:
+    """Alerts in the chosen places and period; an alert belongs to the period it started in (as on the Executive overview)."""
+    m = np.ones(len(df), dtype=bool)
+    for col, v in (("region", region), ("store_id", store_id), ("warehouse_team", team), ("category", category)):
+        if _many(v) and col in df:
+            m &= df[col].isin(_many(v)).to_numpy()
+    if date_from:
+        m &= (df["start_date"] >= date_from).to_numpy()
+    if date_to:
+        m &= (df["start_date"] <= date_to).to_numpy()
+    return m
+
+
+def list_alerts(run_id: str, *, severity: list[str] | None = None, likely_type: list[str] | None = None, store_id: str | list[str] | None = None, team: str | list[str] | None = None, category: str | list[str] | None = None, region: str | list[str] | None = None, date_from: str | None = None, date_to: str | None = None, status: str | None = None, q: str | None = None, sort: str = "priority", limit: int = 50, offset: int = 0, answer_key: bool = False) -> AlertPage:
     rd = storage.load_run(run_id)
     df = rd.incidents
     if not len(df):
         return AlertPage(total=0, alerts=[])
     st = _status_map(rd.run.dataset_id)
-    m = np.ones(len(df), dtype=bool)
+    m = scope_mask(df, region=region, store_id=store_id, team=team, category=category, date_from=date_from, date_to=date_to)
     if severity:
         m &= df["severity"].isin(severity).to_numpy()
     if likely_type:
         m &= df["likely_type"].isin(likely_type).to_numpy()
-    if store_id:
-        m &= (df["store_id"] == store_id).to_numpy()
-    if team:
-        m &= (df["warehouse_team"] == team).to_numpy()
-    if category:
-        m &= (df["category"] == category).to_numpy()
     if status:
         s = df["alert_key"].map(lambda k: st.get(k, "open"))
         m &= ((s == "open") if status == "open" else (s != "open") if status == "reviewed" else (s == status)).to_numpy()

@@ -8,6 +8,7 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from google.genai import types
 
 from app.assistant import adk_tools as A
+from app.assistant import guard
 from app.assistant.context_pack import UiState, build_context_pack, render_context_pack
 from app.assistant.settings import LlmSettings
 
@@ -29,7 +30,8 @@ Speak plainly, like a helpful colleague, in British English. Conventions:
 - Keep answers short: a sentence or two, then bullets if needed, then one suggested next step. No headings for short answers.
 """
 
-GUARDRAILS = """Rules:
+GUARDRAILS = guard.SCOPE_RULES + """
+Rules:
 1. Never invent numbers. Every figure must come from a tool result in this conversation or from the CURRENT STATE below. If you do not have it, say so and offer to fetch it.
 2. Prefer one well-chosen tool call, then answer. Do not call the same tool twice with the same arguments.
 3. You never run or change anything yourself. Syncing a vendor, training, running detection, retraining with feedback, exporting, switching the model in use, creating, changing or running schedules, and raising tasks in a vendor's system are PROPOSALS: call propose_job, say in one sentence what it will do (and how long it takes), and ask the user to press Confirm. Never say a job has started or a task was raised unless a tool result shows it. Do not re-propose something already pending.
@@ -41,6 +43,7 @@ GUARDRAILS = """Rules:
 9. Accuracy figures from a demo vendor's answer key (injected anomalies) must be called that, e.g. "on the demo vendor's answer key"; real vendors have none, so on real data accuracy comes from loss-prevention flags and team feedback.
 10. When CURRENT STATE says the audience is executive, answer in under 90 words: two or three short plain sentences (money at risk, what to do first, expected return), then at most three one-line bullets. Take board figures (revenue at risk, loss prevented, inventory accuracy, SLA, overdue cases) from executive_overview so they match the Executive overview page, and say which period they cover. Avoid jargon such as average precision, P(true), percentile, ROC or threshold unless asked; say "confidence" or "x times better than today's rule" instead.
 11. vendor_lookup is LIVE vendor data: say it is live and quote its as-of date; snapshot figures (alerts, runs) can be older. When stock is missing, say what the SOP says to do next (get_sop) and who to escalate to, rather than improvising a procedure.
+12. Filters: when the user names a region, store, category, team or period, pass it to the tool (region, store_id, category, team, days or start_date/end_date) instead of fetching everything and filtering in your head, and never answer a filtered question with unfiltered figures. "Last 30 / 90 days" is days=30 / 90, counted back from the data's last day (CURRENT STATE says which day that is); "this month", "September" or "last week" become start_date/end_date. Pass names as the user said them; if a tool says a value does not match, use the valid values it lists (or filter_options) and ask the user when it is ambiguous. Say which filters and period your figures cover.
 """
 
 
@@ -141,14 +144,16 @@ def _cfg(settings: LlmSettings) -> types.GenerateContentConfig:
 
 def build_agent_tree(model: Any, settings: LlmSettings) -> LlmAgent:
     cfg = _cfg(settings)
+    # Every agent gets the scope guard: after a hand-over, follow-up messages go straight to the specialist.
+    common = {"model": model, "generate_content_config": cfg, "before_model_callback": guard.before_model}
     if settings.agent_mode == "single":
         return LlmAgent(
-            name="sentinel_assistant", model=model, description="Inventory Sentinel assistant",
+            name="sentinel_assistant", description="Inventory Sentinel assistant",
             instruction=_instruction("Your role: the single assistant for everything below.\n" + "\n".join([DATA_ROLE, MODEL_ROLE, ALERT_ROLE, PLAN_ROLE, OPS_ROLE, EXPLAINER_ROLE])),
-            tools=ALL_TOOLS(), generate_content_config=cfg,
+            tools=ALL_TOOLS(), **common,
         )
-    specialists = [LlmAgent(name=s["name"], model=model, description=s["description"], instruction=_instruction(s["role"]), tools=s["tools"], generate_content_config=cfg) for s in TEAM_SPECS[1:]]
+    specialists = [LlmAgent(name=s["name"], description=s["description"], instruction=_instruction(s["role"]), tools=s["tools"], **common) for s in TEAM_SPECS[1:]]
     return LlmAgent(
-        name="sentinel_assistant", model=model, description=TEAM_SPECS[0]["description"], instruction=_instruction(TEAM_SPECS[0]["role"]),
-        tools=TEAM_SPECS[0]["tools"], sub_agents=specialists, generate_content_config=cfg,
+        name="sentinel_assistant", description=TEAM_SPECS[0]["description"], instruction=_instruction(TEAM_SPECS[0]["role"]),
+        tools=TEAM_SPECS[0]["tools"], sub_agents=specialists, **common,
     )

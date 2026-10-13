@@ -40,6 +40,10 @@ def _frame(req: PlanRequest) -> tuple[pd.DataFrame, str, str]:
         df = df[df["severity"].isin(req.severities)]
     if req.teams:
         df = df[df["warehouse_team"].isin(req.teams)]
+    if req.regions or req.store_ids or req.categories or req.date_from or req.date_to:
+        from app.services.detection import scope_mask
+
+        df = df[scope_mask(df, region=req.regions, store_id=req.store_ids, category=req.categories, date_from=req.date_from, date_to=req.date_to)]
     minutes = {**config.MINUTES_BY_TYPE, **(req.minutes_by_type or {})}
     persist = {**config.PERSIST_BY_TYPE, **(req.persist_by_type or {})}
     df["minutes"] = df["likely_type"].map(lambda t: float(minutes.get(t, minutes["unclear"])))
