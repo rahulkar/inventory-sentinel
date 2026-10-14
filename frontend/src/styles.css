@@ -763,6 +763,15 @@ table.data tr.best td { background: #f0f7ff; }
 .exov-bars b small { margin-left: 6px; font-weight: 400; color: var(--text-2); }
 .exov-ai-tag { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: #efe9fb; color: #5b3fb0; font-size: 11px; font-weight: 600; }
 .exov-ai-note { margin: 4px 0 2px; font-size: 12px; color: var(--text-2); }
+.exov-card-head .btn.sm { line-height: 1.2; }
+.exov-card-head .btn.sm svg { flex: 0 0 auto; }
+.exov-ai-prog { margin: 6px 0 4px; padding: 9px 11px; border-radius: 6px; background: #f6f3fd; font-size: 12px; color: var(--text-2); }
+.exov-ai-prog-head, .exov-ai-prog-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exov-ai-prog-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; color: #5b3fb0; font-weight: 600; }
+.exov-ai-prog-head > span:last-child { font-variant-numeric: tabular-nums; }
+.exov-ai-prog-track { height: 6px; margin: 7px 0 5px; border-radius: 3px; background: #e2dbf5; overflow: hidden; }
+.exov-ai-prog-track > span { display: block; height: 100%; background: #6d4fd0; border-radius: 3px; transition: width 0.6s ease; }
+.exov-ai-prog-foot .btn.link { padding: 0 4px; font-size: 12px; }
 .exov-caveat { display: flex; gap: 8px; align-items: flex-start; margin-top: auto; padding: 9px 11px; background: #eef8fd; border-radius: 4px; font-size: 12px; color: var(--text-2); line-height: 1.4; }
 .exov-bars + .exov-caveat { margin-top: 14px; }
 .exov-caveat > svg { flex: 0 0 auto; margin-top: 1px; color: #0b78ad; }

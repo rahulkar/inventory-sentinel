@@ -1080,6 +1080,19 @@ export interface ExecutiveSummary {
   top_locations: { store_id: string; label: string; value_gbp: number }[];
 }
 
+/** Background AI pass over a run's unclear cases (batches of 200). */
+export interface ReclassifyStatus {
+  state: "idle" | "running" | "cancelling" | "done" | "cancelled" | "failed";
+  total?: number;
+  done?: number;
+  batch?: number;
+  batches?: number;
+  reclassified?: number;
+  still_unclear?: number;
+  failed?: number;
+  error?: string | null;
+}
+
 export interface LibraryDocument {
   id: string;
   name: string;

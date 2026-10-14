@@ -14,6 +14,7 @@ import type {
   DocumentLibrary,
   LibraryDocument,
   ExecutiveSummary,
+  ReclassifyStatus,
   Experiment,
   AlertSop,
   Connector,
@@ -252,6 +253,9 @@ export const api = {
     executive: (id: string, f: ExecFilters) => request<ExecutiveSummary>(`/api/runs/${id}/executive${qs({ ...f })}`),
     reclassify: (id: string, f: ExecFilters) =>
       request<{ requested: number; reclassified: number; still_unclear: number; failed: number }>(`/api/runs/${id}/reclassify${qs({ ...f })}`, { method: "POST" }),
+    reclassifyAuto: (id: string, f: ExecFilters) => request<ReclassifyStatus>(`/api/runs/${id}/reclassify/auto${qs({ ...f })}`, { method: "POST" }),
+    reclassifyStatus: (id: string) => request<ReclassifyStatus>(`/api/runs/${id}/reclassify/status`),
+    reclassifyCancel: (id: string) => request<ReclassifyStatus>(`/api/runs/${id}/reclassify/cancel`, { method: "POST" }),
     alerts: (id: string, q: AlertQuery = {}) => request<AlertPage>(`/api/runs/${id}/alerts${qs({ ...q })}`),
     alert: (id: string, alertId: string, answerKey = false) => request<Alert>(`/api/runs/${id}/alerts/${alertId}${qs({ answer_key: answerKey || undefined })}`),
     alertsCsvUrl: (id: string) => `/api/runs/${id}/alerts.csv`,

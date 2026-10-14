@@ -8,7 +8,7 @@ import { EmptyChartArt, EmptyClipboardArt, EmptyState, SinglePinArt, WarehouseAr
 import { JobProgress } from "../components/JobProgress";
 import { Spinner } from "../components/Layout";
 import { PIPELINE_STEPS, usePipeline } from "../hooks/usePipeline";
-import type { ExecutiveSummary } from "../types";
+import type { ExecutiveSummary, ReclassifyStatus } from "../types";
 import { compactGbp, gbp, num, TYPE_HELP, TYPE_LABEL } from "../utils";
 
 /** Executive mode home: the board overview on one screen. Three numbers, what kind of problems are open, and where the money is. */
@@ -274,25 +274,61 @@ const execFilters = (f: Filters) => {
 function PatternsCard({ runId, data, filters, onClear, onChanged }: { runId: string | null; data: ExecutiveSummary; filters: Filters; onClear: () => void; onChanged: () => void }) {
   const max = Math.max(1, ...data.patterns.map((p) => p.revenue_gbp));
   const aiTotal = data.patterns.reduce((n, p) => n + p.ai_cases, 0);
-  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<ReclassifyStatus | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const running = prog?.state === "running" || prog?.state === "cancelling";
+
+  // pick up a pass that is already going (another tab, or after navigating away), then follow it every second
+  useEffect(() => {
+    if (!runId) return;
+    let stop = false;
+    let lastBatch = -1;
+    let timer: number | undefined;
+    let watching = running; // only report the end of a pass this page saw running
+    const poll = () =>
+      api.runs
+        .reclassifyStatus(runId)
+        .then((st) => {
+          if (stop) return;
+          setProg(st);
+          const live = st.state === "running" || st.state === "cancelling";
+          if (live) watching = true;
+          // refresh the bars whenever a batch of 200 has been saved, and once at the end
+          if ((st.batch ?? 0) !== lastBatch) {
+            if (lastBatch >= 0 && (st.batch ?? 0) > 1) onChanged();
+            lastBatch = st.batch ?? 0;
+          }
+          if (live) timer = window.setTimeout(poll, 1000);
+          else if (watching && st.state !== "idle") {
+            onChanged();
+            setNote(
+              st.state === "failed"
+                ? `AI pass stopped: ${st.error ?? "unknown error"}`
+                : `AI ${st.state === "cancelled" ? "pass stopped" : "pass finished"}: ${num.format(st.reclassified ?? 0)} given a likely cause, ${num.format(st.still_unclear ?? 0)} still unclear` +
+                    (st.failed ? `, ${num.format(st.failed)} not answered` : "") +
+                    ".",
+            );
+            watching = false;
+          }
+        })
+        .catch(() => !stop && (timer = window.setTimeout(poll, 3000)));
+    if (running || prog === null) void poll();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, running]);
+
   const reclassify = () => {
     if (!runId) return;
-    setBusy(true);
     setNote(null);
     api.runs
-      .reclassify(runId, execFilters(filters))
-      .then((r) => {
-        setNote(
-          `AI reviewed ${num.format(r.requested)} case${r.requested === 1 ? "" : "s"}: ${num.format(r.reclassified)} given a likely cause, ${num.format(r.still_unclear)} still unclear` +
-            (r.failed ? `, ${num.format(r.failed)} not answered` : "") +
-            ".",
-        );
-        onChanged();
-      })
-      .catch((e) => setNote(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+      .reclassifyAuto(runId, execFilters(filters))
+      .then(setProg)
+      .catch((e) => setNote(e instanceof Error ? e.message : String(e)));
   };
+  const pct = prog?.total ? Math.round(((prog.done ?? 0) / prog.total) * 100) : 0;
   const narrowed = Boolean(filters.location || filters.category);
   const period = PERIODS.find((p) => p.days === filters.days)?.label.toLowerCase() ?? "this period";
   return (
@@ -305,12 +341,37 @@ function PatternsCard({ runId, data, filters, onClear, onChanged }: { runId: str
             {scopeText(filters, data)} · likely cause, ranked by revenue at risk
           </p>
         </div>
-        {data.unclear_unreviewed > 0 && data.ai_available ? (
-          <button className="btn sm" onClick={reclassify} disabled={busy || !runId} title="Ask the AI to suggest a cause for unclear cases, highest revenue at risk first (up to 200 at a time)">
-            {busy ? <Spinner /> : <Sparkles size={14} />} Reclassify {num.format(data.unclear_unreviewed)} unclear with AI
+        {data.unclear_unreviewed > 0 && data.ai_available && !running ? (
+          <button className="btn sm" onClick={reclassify} disabled={!runId} title="Ask the AI to suggest a cause for every unclear case in this view, highest revenue at risk first, in batches of 200">
+            <Sparkles size={14} /> Reclassify {num.format(data.unclear_unreviewed)} unclear with AI
           </button>
         ) : null}
       </div>
+      {running && prog ? (
+        <div className="exov-ai-prog" role="status" aria-live="polite">
+          <div className="exov-ai-prog-head">
+            <span>
+              <Sparkles size={13} /> {prog.state === "cancelling" ? "Stopping after this batch…" : `AI reclassifying · batch ${prog.batch ?? 0} of ${prog.batches ?? 0}`}
+            </span>
+            <span>
+              {num.format(prog.done ?? 0)} / {num.format(prog.total ?? 0)} · {pct}%
+            </span>
+          </div>
+          <div className="exov-ai-prog-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+            <span style={{ width: `${pct}%` }} />
+          </div>
+          <div className="exov-ai-prog-foot">
+            <span>
+              {num.format(prog.reclassified ?? 0)} given a cause · {num.format(prog.still_unclear ?? 0)} still unclear
+            </span>
+            {prog.state === "running" ? (
+              <button className="btn sm link" onClick={() => runId && api.runs.reclassifyCancel(runId).then(setProg)}>
+                Stop
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {note ? <p className="exov-ai-note">{note}</p> : null}
       {data.unclear_unreviewed > 0 && !data.ai_available ? <p className="exov-ai-note">Set up the AI gateway in Settings to reclassify unclear cases.</p> : null}
       {data.patterns.length ? (

@@ -146,29 +146,33 @@ def candidates(rd: storage.RunData, ds: storage.Dataset, open_keys: set[str] | N
     return c.assign(_rev=rev).sort_values("_rev", ascending=False).drop(columns="_rev")
 
 
-async def run(run_id: str, alert_keys: list[str] | None = None, redo: bool = False) -> dict[str, Any]:
-    s = llm_settings.load()
-    if not s.configured:
-        raise ValueError("Set up the AI gateway in Settings first.")
+def _context(run_id: str) -> tuple[storage.RunData, storage.Dataset, dict[str, Any], set[str]]:
     rd = storage.load_run(run_id)
     ds = storage.load_dataset(rd.run.dataset_id)
     from app.services import triage
 
     reviews = triage.latest(ds.meta.id)
     open_keys = {k for k in rd.incidents["alert_key"] if k not in reviews} if len(rd.incidents) else set()
-    if alert_keys is not None:
-        open_keys &= set(alert_keys)
-    todo = candidates(rd, ds, open_keys, redo).head(MAX_CASES)
-    if not len(todo):
-        return {"requested": 0, "reclassified": 0, "still_unclear": 0, "failed": 0}
     model = storage.get_model(rd.run.model_id)
-    baseline = model.feature_baseline if model else {}
+    return rd, ds, (model.feature_baseline if model else {}), open_keys
+
+
+async def _classify(run_id: str, todo: pd.DataFrame, ds: storage.Dataset, baseline: dict[str, Any], s: llm_settings.LlmSettings, on_call: Any = None) -> dict[str, int]:
+    """Ask the LLM about these cases (BATCH per call), save the answers, return counts."""
     rows = list(todo.iterrows())
     cases = [_case(i, r, ds, baseline) for i, (_, r) in enumerate(rows)]
     sem = asyncio.Semaphore(CONCURRENCY)
     verify = llm_settings.verify_arg(s.verify_ssl, s.ca_bundle)
+
+    async def one(chunk: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        try:
+            return await _call(client, s, chunk, sem)
+        finally:
+            if on_call:
+                on_call(len(chunk))
+
     async with httpx.AsyncClient(timeout=s.timeout_s, verify=verify) as client:
-        out = await asyncio.gather(*(_call(client, s, cases[k:k + BATCH], sem) for k in range(0, len(cases), BATCH)), return_exceptions=True)
+        out = await asyncio.gather(*(one(cases[k:k + BATCH]) for k in range(0, len(cases), BATCH)), return_exceptions=True)
     errors = [o for o in out if isinstance(o, Exception)]
     if errors and len(errors) == len(out):
         raise RuntimeError(llm_settings.readable_error(errors[0], s.base_url))
@@ -185,10 +189,85 @@ async def run(run_id: str, alert_keys: list[str] | None = None, redo: bool = Fal
             if not 0 <= i < len(rows):
                 continue
             t = str(r.get("type", "unclear"))
-            conf = min(1.0, max(0.0, float(r.get("confidence") or 0)))
+            try:
+                conf = min(1.0, max(0.0, float(r.get("confidence") or 0)))
+            except (TypeError, ValueError):
+                conf = 0.0
             got[rows[i][1]["alert_key"]] = {"type": t if t in TYPES else "unclear", "confidence": round(conf, 2), "why": str(r.get("why", ""))[:300], "model": s.model, "at": now}
     with _lock:
         merged = {**load(run_id), **got}
         storage.atomic_write_text(_path(run_id), json.dumps(merged, indent=1))
     moved = sum(1 for v in got.values() if v["type"] != "unclear" and v["confidence"] >= MIN_CONFIDENCE)
     return {"requested": len(rows), "reclassified": moved, "still_unclear": len(got) - moved, "failed": len(rows) - len(got)}
+
+
+def _settings() -> llm_settings.LlmSettings:
+    s = llm_settings.load()
+    if not s.configured:
+        raise ValueError("Set up the AI gateway in Settings first.")
+    return s
+
+
+async def run(run_id: str, alert_keys: list[str] | None = None, redo: bool = False) -> dict[str, Any]:
+    """One batch of up to MAX_CASES, highest revenue at risk first."""
+    s = _settings()
+    rd, ds, baseline, open_keys = _context(run_id)
+    if alert_keys is not None:
+        open_keys &= set(alert_keys)
+    todo = candidates(rd, ds, open_keys, redo).head(MAX_CASES)
+    if not len(todo):
+        return {"requested": 0, "reclassified": 0, "still_unclear": 0, "failed": 0}
+    return await _classify(run_id, todo, ds, baseline, s)
+
+
+# ---------------------------------------------------------------- auto mode: every unclear case in the view, batch by batch
+_auto: dict[str, dict[str, Any]] = {}
+_tasks: dict[str, asyncio.Task] = {}
+
+
+def status(run_id: str) -> dict[str, Any]:
+    return dict(_auto.get(run_id) or {"state": "idle"})
+
+
+def start_auto(run_id: str, alert_keys: list[str]) -> dict[str, Any]:
+    s = _settings()
+    if run_id in _tasks and not _tasks[run_id].done():
+        return status(run_id)
+    rd, ds, _, open_keys = _context(run_id)
+    total = len(candidates(rd, ds, open_keys & set(alert_keys)))
+    _auto[run_id] = {"state": "running", "total": total, "done": 0, "batch": 0, "batches": -(-total // MAX_CASES),
+                     "reclassified": 0, "still_unclear": 0, "failed": 0, "error": None, "started_at": storage.now_iso(), "finished_at": None}
+    _tasks[run_id] = asyncio.get_running_loop().create_task(_auto_loop(run_id, set(alert_keys), s))
+    return status(run_id)
+
+
+def cancel_auto(run_id: str) -> dict[str, Any]:
+    st = _auto.get(run_id)
+    if st and st["state"] == "running":
+        st["state"] = "cancelling"
+    return status(run_id)
+
+
+async def _auto_loop(run_id: str, keys: set[str], s: llm_settings.LlmSettings) -> None:
+    st = _auto[run_id]
+    tried: set[str] = set()  # cases the model did not answer are not asked again in this pass
+    try:
+        while st["state"] == "running":
+            rd, ds, baseline, open_keys = _context(run_id)
+            todo = candidates(rd, ds, (open_keys & keys) - tried).head(MAX_CASES)
+            if not len(todo):
+                break
+            tried |= set(todo["alert_key"])
+            st["batch"] += 1
+
+            def tick(n: int) -> None:
+                st["done"] = min(st["total"], st["done"] + n)
+
+            res = await _classify(run_id, todo, ds, baseline, s, on_call=tick)
+            for k in ("reclassified", "still_unclear", "failed"):
+                st[k] += res[k]
+        st["state"] = "cancelled" if st["state"] == "cancelling" else "done"
+    except Exception as exc:  # noqa: BLE001
+        st["state"], st["error"] = "failed", str(exc)
+    finally:
+        st["finished_at"] = storage.now_iso()

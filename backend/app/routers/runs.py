@@ -69,6 +69,27 @@ async def reclassify_unclear(run_id: str, days: int = 90, region: str | None = N
         raise HTTPException(502, str(exc)) from exc
 
 
+@router.post("/runs/{run_id}/reclassify/auto")
+async def reclassify_auto(run_id: str, days: int = 90, region: str | None = None, store_id: str | None = None, category: str | None = None) -> dict:
+    """AI assist in the background: every open unclear case in this view, MAX_CASES at a time; poll the status for progress."""
+    _load(run_id)
+    keys = executive.open_keys(run_id, days=max(0, days), region=region or None, store_id=store_id or None, category=category or None)
+    try:
+        return reclassify.start_auto(run_id, keys)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/reclassify/status")
+def reclassify_status(run_id: str) -> dict:
+    return reclassify.status(run_id)
+
+
+@router.post("/runs/{run_id}/reclassify/cancel")
+def reclassify_cancel(run_id: str) -> dict:
+    return reclassify.cancel_auto(run_id)
+
+
 @router.get("/runs/{run_id}/alerts", response_model=AlertPage)
 def alerts(
     run_id: str,
